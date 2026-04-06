@@ -27,6 +27,9 @@ public class AlertNotificationService {
         this.enterpriseWechatApi = enterpriseWechatApi;
     }
 
+    /**
+     * 统一负责消息冷却和企业微信发送。
+     */
     public void send(AlertSignal signal) {
         String recordKey = signal.getKline().getSymbol() + signal.getType();
         if (!allowSend(recordKey)) {
@@ -43,6 +46,7 @@ public class AlertNotificationService {
     }
 
     private boolean allowSend(String recordKey) {
+        // 用“交易对 + 信号类型”作为冷却维度，避免同类消息短时间重复轰炸。
         long currentTime = System.currentTimeMillis();
         Long lastSentTime = sentRecords.get(recordKey);
         if (lastSentTime == null || currentTime - lastSentTime > COOLDOWN_PERIOD) {
@@ -53,6 +57,7 @@ public class AlertNotificationService {
     }
 
     private String buildMessage(AlertSignal signal) {
+        // 消息内容在这里统一组装，避免业务处理类拼接通知文案。
         BinanceKlineDTO kline = signal.getKline();
         BigDecimal closePrice = new BigDecimal(kline.getClose()).setScale(4, RoundingMode.HALF_DOWN);
         BigDecimal amplitude = calculateAmplitude(kline).multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP);

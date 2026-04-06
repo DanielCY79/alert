@@ -28,6 +28,9 @@ public class AlertService {
         this.alertSymbolProcessor = alertSymbolProcessor;
     }
 
+    /**
+     * 定时调度入口，只负责拉取交易对列表并分发给处理器。
+     */
     @Scheduled(fixedRate = 60000)
     public void monitoring() {
         System.out.println("Monitoring started " + LOG_TIME_FORMATTER.format(LocalDateTime.now()));
@@ -48,6 +51,7 @@ public class AlertService {
     }
 
     private void processSymbols(List<BinanceSymbolsDetailDTO> symbols, int threadCount) {
+        // 线程数不超过交易对数量，避免空转线程。
         int poolSize = Math.max(1, Math.min(threadCount, symbols.size()));
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
         try {

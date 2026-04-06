@@ -40,6 +40,9 @@ public class AlertSymbolProcessor {
         this.alertNotificationService = alertNotificationService;
     }
 
+    /**
+     * 单个交易对处理入口，负责过滤、拉取 K 线、判断信号并发送通知。
+     */
     public void process(BinanceSymbolsDetailDTO symbolDTO) {
         if (shouldSkip(symbolDTO)) {
             return;
@@ -50,6 +53,7 @@ public class AlertSymbolProcessor {
             return;
         }
 
+        // 这里以最近一根已收盘 K 线作为展示和通知的基准。
         BinanceKlineDTO referenceKline = klines.get(2);
         List<BinanceKlineDTO> recentThreeClosedKlines = collectDescending(klines, klines.size() - 2, 1);
         if (allMatch(recentThreeClosedKlines, alertRuleEvaluator::isContinuousThreeMatch)) {
@@ -57,6 +61,7 @@ public class AlertSymbolProcessor {
             backRecords.put(symbolDTO.getSymbol(), System.currentTimeMillis());
         }
 
+        // 只有先出现过三连涨，才继续观察后续是否出现回踩机会。
         if (backRecords.containsKey(symbolDTO.getSymbol())) {
             BinanceKlineDTO latestClosedKline = klines.get(klines.size() - 2);
             if (alertRuleEvaluator.isBacktrackMatch(latestClosedKline)) {
@@ -77,6 +82,7 @@ public class AlertSymbolProcessor {
     }
 
     private boolean shouldSkip(BinanceSymbolsDetailDTO symbolDTO) {
+        // 只处理 USDT 交易对，并过滤掉手动排除和非交易状态的标的。
         String symbol = symbolDTO.getSymbol();
         if (!StringUtils.hasText(symbol) || !symbol.contains("USDT")) {
             return true;
@@ -98,6 +104,7 @@ public class AlertSymbolProcessor {
     }
 
     private List<BinanceKlineDTO> loadRecentKlines(String symbol) {
+        // 拉取 5 根 1 分钟 K 线，便于剔除未收盘数据后继续做窗口判断。
         BinanceKlineDTO reqDTO = new BinanceKlineDTO();
         reqDTO.setSymbol(symbol);
         reqDTO.setInterval("1m");
@@ -110,6 +117,7 @@ public class AlertSymbolProcessor {
     }
 
     private List<BinanceKlineDTO> collectDescending(List<BinanceKlineDTO> klines, int startIndex, int endIndex) {
+        // 按从近到远的顺序收集已收盘 K 线，和现有判断逻辑保持一致。
         List<BinanceKlineDTO> result = new ArrayList<>();
         for (int i = startIndex; i >= endIndex && i >= 0; i--) {
             result.add(klines.get(i));

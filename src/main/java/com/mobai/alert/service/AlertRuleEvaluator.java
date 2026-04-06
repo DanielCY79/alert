@@ -34,6 +34,10 @@ public class AlertRuleEvaluator {
     @Value("${monitoring.volume.two.low}")
     private String twoVolumeLow;
 
+    /**
+     * 连续三根上涨的基础条件：
+     * 收盘价高于开盘价，振幅在阈值区间内，且成交额命中范围。
+     */
     public boolean isContinuousThreeMatch(BinanceKlineDTO kline) {
         if (!isRising(kline)) {
             return false;
@@ -49,6 +53,9 @@ public class AlertRuleEvaluator {
                 && volume.compareTo(new BigDecimal(volumeHigh)) <= 0;
     }
 
+    /**
+     * 两连涨使用较宽松的阈值，只校验最低振幅和最低成交额。
+     */
     public boolean isContinuousTwoMatch(BinanceKlineDTO kline) {
         if (!isRising(kline)) {
             return false;
@@ -62,6 +69,9 @@ public class AlertRuleEvaluator {
         return new BigDecimal(kline.getVolume()).compareTo(new BigDecimal(twoVolumeLow)) >= 0;
     }
 
+    /**
+     * 回踩信号要求当前已收盘 K 线为阴线，并且跌幅、成交额都达到配置阈值。
+     */
     public boolean isBacktrackMatch(BinanceKlineDTO kline) {
         BigDecimal open = new BigDecimal(kline.getOpen());
         BigDecimal close = new BigDecimal(kline.getClose());
@@ -84,6 +94,7 @@ public class AlertRuleEvaluator {
     }
 
     private BigDecimal calculateAmplitude(BinanceKlineDTO kline) {
+        // 振幅统一按 (high - low) / low 计算，返回小数值而非百分比。
         BigDecimal high = new BigDecimal(kline.getHigh());
         BigDecimal low = new BigDecimal(kline.getLow());
         return high.subtract(low).divide(low, 6, RoundingMode.HALF_UP);

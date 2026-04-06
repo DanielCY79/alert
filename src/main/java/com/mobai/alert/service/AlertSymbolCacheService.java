@@ -28,6 +28,9 @@ public class AlertSymbolCacheService {
         this.binanceApi = binanceApi;
     }
 
+    /**
+     * 交易对列表按天缓存，避免每分钟都去拉取一次全量交易对。
+     */
     public BinanceSymbolsDTO loadSymbols() throws IOException {
         if (Files.exists(cacheFilePath) && Files.size(cacheFilePath) > 0) {
             BasicFileAttributes attrs = Files.readAttributes(cacheFilePath, BasicFileAttributes.class);
@@ -37,6 +40,7 @@ public class AlertSymbolCacheService {
                     .toLocalDateTime();
 
             if (isToday(lastModifiedTime)) {
+                // 当天缓存直接复用，只有内容为空时才重新刷新。
                 String content = Files.readString(cacheFilePath, StandardCharsets.UTF_8);
                 if (!StringUtils.hasText(content) || "{}".equals(content)) {
                     return refreshSymbols();
@@ -59,6 +63,7 @@ public class AlertSymbolCacheService {
     }
 
     private BinanceSymbolsDTO refreshSymbols() {
+        // 刷新后立即覆盖本地缓存，方便下一轮调度直接读取。
         BinanceSymbolsDTO symbolsDTO = binanceApi.listSymbols();
         try {
             Files.writeString(

@@ -2,6 +2,9 @@ package com.mobai.alert.service;
 
 import com.mobai.alert.dto.BinanceKlineDTO;
 
+/**
+ * 轻量通知对象，用来在业务判断层和通知层之间传递告警信息。
+ */
 public class AlertSignal {
     private final String title;
     private final BinanceKlineDTO kline;
