@@ -25,7 +25,7 @@ public class RestTemplateConfig {
         // 设置读取超时时间为5秒（5000毫秒）
         factory.setReadTimeout(30000);
         // 设置代理
-        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 7897));
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 7890));
         factory.setProxy(proxy);
         return factory;
     }
