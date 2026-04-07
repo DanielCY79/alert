@@ -4,6 +4,7 @@ import com.mobai.alert.api.EnterpriseWechatApi;
 import com.mobai.alert.dto.BinanceKlineDTO;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,7 +34,7 @@ public class AlertNotificationService {
     public void send(AlertSignal signal) {
         String recordKey = signal.getKline().getSymbol() + signal.getType();
         if (!allowSend(recordKey)) {
-            System.out.println("[\u62D2\u7EDD] " + recordKey + " \u51B7\u5374\u65F6\u95F4\u5185\u5DF2\u53D1\u9001\u8FC7\u901A\u77E5");
+            System.out.println("[拒绝] " + recordKey + " 冷却时间内已发送过通知");
             return;
         }
         enterpriseWechatApi.sendGroupMessage(buildMessage(signal));
@@ -46,7 +47,6 @@ public class AlertNotificationService {
     }
 
     private boolean allowSend(String recordKey) {
-        // 用“交易对 + 信号类型”作为冷却维度，避免同类消息短时间重复轰炸。
         long currentTime = System.currentTimeMillis();
         Long lastSentTime = sentRecords.get(recordKey);
         if (lastSentTime == null || currentTime - lastSentTime > COOLDOWN_PERIOD) {
@@ -57,7 +57,6 @@ public class AlertNotificationService {
     }
 
     private String buildMessage(AlertSignal signal) {
-        // 消息内容在这里统一组装，避免业务处理类拼接通知文案。
         BinanceKlineDTO kline = signal.getKline();
         BigDecimal closePrice = new BigDecimal(kline.getClose()).setScale(4, RoundingMode.HALF_DOWN);
         BigDecimal amplitude = calculateAmplitude(kline).multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP);
@@ -65,13 +64,39 @@ public class AlertNotificationService {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime klineTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(kline.getEndTime()), ZoneId.systemDefault());
 
-        return signal.getTitle() + "\uFF1A**" + kline.getSymbol() + "**\n"
-                + " \u6536\u76D8\u4EF7\uFF1A" + closePrice + " USDT\n"
-                + " \u632F\u5E45\uFF1A" + amplitude + "%\n"
-                + " \u6210\u4EA4\u989D\uFF1A" + volume + "\u4E07USDT\n"
-                + " \u5F53\u524D\u65F6\u95F4\uFF1A" + MESSAGE_TIME_FORMATTER.format(now) + "\n"
-                + " K\u7EBF\u65F6\u95F4\uFF1A" + MESSAGE_TIME_FORMATTER.format(klineTime) + "\n"
-                + " [\u70B9\u51FB\u67E5\u770B\u5B9E\u65F6K\u7EBF\u56FE](https://www.binance.com/en/futures/" + kline.getSymbol() + "?type=spot&layout=pro&interval=1m)";
+        StringBuilder builder = new StringBuilder();
+        builder.append(signal.getTitle()).append("：**").append(kline.getSymbol()).append("**\n")
+                .append(" 周期：").append(StringUtils.hasText(kline.getInterval()) ? kline.getInterval() : "1h").append("\n")
+                .append(" 收盘价：").append(closePrice).append(" USDT\n")
+                .append(" 振幅：").append(amplitude).append("%\n")
+                .append(" 成交额：").append(volume).append(" 万USDT\n");
+
+        if (signal.getTriggerPrice() != null) {
+            builder.append(" 触发价：").append(signal.getTriggerPrice().setScale(4, RoundingMode.HALF_UP)).append(" USDT\n");
+        }
+        if (signal.getStopPrice() != null) {
+            builder.append(" 止损价：").append(signal.getStopPrice().setScale(4, RoundingMode.HALF_UP)).append(" USDT\n");
+            if (signal.getTriggerPrice() != null && signal.getTriggerPrice().compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal riskPct = signal.getTriggerPrice()
+                        .subtract(signal.getStopPrice())
+                        .divide(signal.getTriggerPrice(), 6, RoundingMode.HALF_UP)
+                        .multiply(new BigDecimal("100"))
+                        .setScale(2, RoundingMode.HALF_UP);
+                builder.append(" 预估风险：").append(riskPct).append("%\n");
+            }
+        }
+        if (StringUtils.hasText(signal.getDetail())) {
+            builder.append(" 策略说明：").append(signal.getDetail()).append("\n");
+        }
+
+        builder.append(" 当前时间：").append(MESSAGE_TIME_FORMATTER.format(now)).append("\n")
+                .append(" K线时间：").append(MESSAGE_TIME_FORMATTER.format(klineTime)).append("\n")
+                .append(" [点击查看实时K线图](https://www.binance.com/en/futures/")
+                .append(kline.getSymbol())
+                .append("?type=spot&layout=pro&interval=")
+                .append(StringUtils.hasText(kline.getInterval()) ? kline.getInterval() : "1h")
+                .append(")");
+        return builder.toString();
     }
 
     private BigDecimal calculateAmplitude(BinanceKlineDTO kline) {

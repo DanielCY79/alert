@@ -9,28 +9,34 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Predicate;
 
 @Service
 public class AlertSymbolProcessor {
 
-    private static final long BACK_COOLDOWN_PERIOD = 2 * 60 * 60 * 1000L;
+    private static final String SIGNAL_RISK_EXIT = "risk-exit";
 
     @Value("${monitoring.exclude.symbol:}")
     private String excludeSymbol;
 
+    @Value("${monitoring.strategy.kline.interval:1h}")
+    private String strategyInterval;
+
+    @Value("${monitoring.strategy.kline.limit:80}")
+    private int strategyKlineLimit;
+
+    @Value("${monitoring.strategy.track.hours:48}")
+    private long trackHours;
+
     private final BinanceApi binanceApi;
     private final AlertRuleEvaluator alertRuleEvaluator;
     private final AlertNotificationService alertNotificationService;
-    private final Map<String, Long> backRecords = new ConcurrentHashMap<>();
+    private final Map<String, BreakoutRecord> breakoutRecords = new ConcurrentHashMap<>();
 
     public AlertSymbolProcessor(BinanceApi binanceApi,
                                 AlertRuleEvaluator alertRuleEvaluator,
@@ -41,7 +47,7 @@ public class AlertSymbolProcessor {
     }
 
     /**
-     * 单个交易对处理入口，负责过滤、拉取 K 线、判断信号并发送通知。
+     * 单个交易对处理入口，按《股票魔法师》的思路扫描趋势、收缩和突破。
      */
     public void process(BinanceSymbolsDetailDTO symbolDTO) {
         if (shouldSkip(symbolDTO)) {
@@ -49,40 +55,49 @@ public class AlertSymbolProcessor {
         }
 
         List<BinanceKlineDTO> klines = loadRecentKlines(symbolDTO.getSymbol());
-        if (CollectionUtils.isEmpty(klines) || klines.size() < 4) {
+        if (CollectionUtils.isEmpty(klines) || klines.size() < 3) {
             return;
         }
 
-        // 这里以最近一根已收盘 K 线作为展示和通知的基准。
-        BinanceKlineDTO referenceKline = klines.get(2);
-        List<BinanceKlineDTO> recentThreeClosedKlines = collectDescending(klines, klines.size() - 2, 1);
-        if (allMatch(recentThreeClosedKlines, alertRuleEvaluator::isContinuousThreeMatch)) {
-            alertNotificationService.send(new AlertSignal("\u8FDE\u7EED 3 \u6839K\u7EBF\u62C9\u5347", referenceKline, "1"));
-            backRecords.put(symbolDTO.getSymbol(), System.currentTimeMillis());
-        }
+        BinanceKlineDTO latestClosedKline = klines.get(klines.size() - 2);
+        processRiskExit(symbolDTO.getSymbol(), latestClosedKline);
 
-        // 只有先出现过三连涨，才继续观察后续是否出现回踩机会。
-        if (backRecords.containsKey(symbolDTO.getSymbol())) {
-            BinanceKlineDTO latestClosedKline = klines.get(klines.size() - 2);
-            if (alertRuleEvaluator.isBacktrackMatch(latestClosedKline)) {
-                alertNotificationService.send(new AlertSignal("\u56DE\u8E29\u4EA4\u6613\u5BF9", latestClosedKline, "2"));
-            }
-        }
-
-        List<BinanceKlineDTO> recentTwoClosedKlines = collectDescending(klines, klines.size() - 2, 2);
-        if (allMatch(recentTwoClosedKlines, alertRuleEvaluator::isContinuousTwoMatch)) {
-            alertNotificationService.send(new AlertSignal("\u8FDE\u7EED 2 \u6839K\u7EBF\u62C9\u5347", referenceKline, "3"));
-        }
+        alertRuleEvaluator.evaluateStageTwoBreakout(klines).ifPresent(signal -> {
+            alertNotificationService.send(signal);
+            breakoutRecords.put(symbolDTO.getSymbol(),
+                    new BreakoutRecord(signal.getTriggerPrice(), signal.getStopPrice(), latestClosedKline.getEndTime()));
+        });
     }
 
     @Scheduled(fixedDelay = 5 * 60 * 1000L)
-    public void cleanupExpiredBackRecords() {
-        long currentTime = System.currentTimeMillis();
-        backRecords.entrySet().removeIf(entry -> currentTime - entry.getValue() > BACK_COOLDOWN_PERIOD);
+    public void cleanupExpiredBreakoutRecords() {
+        long expireBefore = System.currentTimeMillis() - trackHours * 60 * 60 * 1000L;
+        breakoutRecords.entrySet().removeIf(entry -> entry.getValue().signalEndTime < expireBefore);
+    }
+
+    private void processRiskExit(String symbol, BinanceKlineDTO latestClosedKline) {
+        BreakoutRecord record = breakoutRecords.get(symbol);
+        if (record == null || latestClosedKline.getEndTime() <= record.signalEndTime) {
+            return;
+        }
+
+        BigDecimal close = new BigDecimal(latestClosedKline.getClose());
+        if (close.compareTo(record.stopPrice) > 0) {
+            return;
+        }
+
+        alertNotificationService.send(new AlertSignal(
+                "SEPA风控退出",
+                latestClosedKline,
+                SIGNAL_RISK_EXIT,
+                "价格跌破前次突破的预设止损位，按小亏离场原则撤退，避免小错拖成大错",
+                record.entryPrice,
+                record.stopPrice
+        ));
+        breakoutRecords.remove(symbol);
     }
 
     private boolean shouldSkip(BinanceSymbolsDetailDTO symbolDTO) {
-        // 只处理 USDT 交易对，并过滤掉手动排除和非交易状态的标的。
         String symbol = symbolDTO.getSymbol();
         if (!StringUtils.hasText(symbol) || !symbol.contains("USDT")) {
             return true;
@@ -104,36 +119,22 @@ public class AlertSymbolProcessor {
     }
 
     private List<BinanceKlineDTO> loadRecentKlines(String symbol) {
-        // 拉取 5 根 1 分钟 K 线，便于剔除未收盘数据后继续做窗口判断。
         BinanceKlineDTO reqDTO = new BinanceKlineDTO();
         reqDTO.setSymbol(symbol);
-        reqDTO.setInterval("1m");
-        reqDTO.setLimit(5);
-        reqDTO.setTimeZone("8");
-        Instant previousMinute = Instant.now().minus(1, ChronoUnit.MINUTES);
-        reqDTO.setEndTime(System.currentTimeMillis());
-        reqDTO.setStartTime(previousMinute.toEpochMilli());
+        reqDTO.setInterval(strategyInterval);
+        reqDTO.setLimit(strategyKlineLimit);
         return binanceApi.listKline(reqDTO);
     }
 
-    private List<BinanceKlineDTO> collectDescending(List<BinanceKlineDTO> klines, int startIndex, int endIndex) {
-        // 按从近到远的顺序收集已收盘 K 线，和现有判断逻辑保持一致。
-        List<BinanceKlineDTO> result = new ArrayList<>();
-        for (int i = startIndex; i >= endIndex && i >= 0; i--) {
-            result.add(klines.get(i));
-        }
-        return result;
-    }
+    private static class BreakoutRecord {
+        private final BigDecimal entryPrice;
+        private final BigDecimal stopPrice;
+        private final long signalEndTime;
 
-    private boolean allMatch(List<BinanceKlineDTO> klines, Predicate<BinanceKlineDTO> predicate) {
-        if (CollectionUtils.isEmpty(klines)) {
-            return false;
+        private BreakoutRecord(BigDecimal entryPrice, BigDecimal stopPrice, long signalEndTime) {
+            this.entryPrice = entryPrice;
+            this.stopPrice = stopPrice;
+            this.signalEndTime = signalEndTime;
         }
-        for (BinanceKlineDTO kline : klines) {
-            if (!predicate.test(kline)) {
-                return false;
-            }
-        }
-        return true;
     }
 }
