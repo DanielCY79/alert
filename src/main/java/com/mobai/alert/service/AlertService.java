@@ -21,17 +21,21 @@ public class AlertService {
     private static final DateTimeFormatter LOG_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final AlertSymbolCacheService alertSymbolCacheService;
+    private final BinanceMarketDataService binanceMarketDataService;
     private final AlertSymbolProcessor alertSymbolProcessor;
 
-    public AlertService(AlertSymbolCacheService alertSymbolCacheService, AlertSymbolProcessor alertSymbolProcessor) {
+    public AlertService(AlertSymbolCacheService alertSymbolCacheService,
+                        BinanceMarketDataService binanceMarketDataService,
+                        AlertSymbolProcessor alertSymbolProcessor) {
         this.alertSymbolCacheService = alertSymbolCacheService;
+        this.binanceMarketDataService = binanceMarketDataService;
         this.alertSymbolProcessor = alertSymbolProcessor;
     }
 
     /**
-     * 定时调度入口，只负责拉取交易对列表并分发给处理器。
+     * Scheduled entry that refreshes the symbol list and dispatches it to processors.
      */
-    @Scheduled(fixedRate = 60000)
+    @Scheduled(fixedRateString = "${monitoring.cycle:60000}")
     public void monitoring() {
         System.out.println("Monitoring started " + LOG_TIME_FORMATTER.format(LocalDateTime.now()));
 
@@ -46,12 +50,13 @@ public class AlertService {
             return;
         }
 
+        binanceMarketDataService.refreshSubscriptions(symbolsDTO.getSymbols());
         processSymbols(symbolsDTO.getSymbols(), 4);
         System.out.println("Monitoring finished " + LOG_TIME_FORMATTER.format(LocalDateTime.now()));
     }
 
     private void processSymbols(List<BinanceSymbolsDetailDTO> symbols, int threadCount) {
-        // 线程数不超过交易对数量，避免空转线程。
+        // Keep the pool size bounded by the symbol count to avoid idle threads.
         int poolSize = Math.max(1, Math.min(threadCount, symbols.size()));
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
         try {
