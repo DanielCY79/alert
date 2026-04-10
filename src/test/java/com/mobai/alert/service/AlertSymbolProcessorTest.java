@@ -4,20 +4,20 @@ import com.mobai.alert.dto.BinanceKlineDTO;
 import com.mobai.alert.dto.BinanceSymbolsDetailDTO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
-import org.mockito.ArgumentCaptor;
 
 class AlertSymbolProcessorTest {
 
@@ -53,7 +53,9 @@ class AlertSymbolProcessorTest {
 
         processor.process(symbol);
 
-        verify(alertNotificationService, never()).send(any(AlertSignal.class));
+        ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
+        verify(alertNotificationService).send(signalCaptor.capture());
+        assertEquals("4", signalCaptor.getValue().getType());
     }
 
     @Test
@@ -85,6 +87,36 @@ class AlertSymbolProcessorTest {
         assertTrue(signalTypes.contains("1"));
         assertTrue(signalTypes.contains("3"));
         assertTrue(signals.stream().allMatch(signal -> signal.getKline() == closedKlines.get(4)));
+    }
+
+    @Test
+    void shouldSendTwoOfThreeSignalWhenExactlyTwoRecentKlinesMatch() {
+        BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
+        List<BinanceKlineDTO> closedKlines = List.of(
+                kline("BTCUSDT", 1L),
+                kline("BTCUSDT", 2L),
+                kline("BTCUSDT", 3L),
+                kline("BTCUSDT", 4L),
+                kline("BTCUSDT", 5L)
+        );
+
+        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1m", 5)).thenReturn(closedKlines);
+        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(2))).thenReturn(true);
+        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(3))).thenReturn(true);
+        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(4))).thenReturn(false);
+        when(alertRuleEvaluator.isBacktrackMatch(closedKlines.get(4))).thenReturn(false);
+        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(3))).thenReturn(false);
+        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(4))).thenReturn(false);
+
+        processor.process(symbol);
+
+        ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
+        verify(alertNotificationService).send(signalCaptor.capture());
+
+        AlertSignal signal = signalCaptor.getValue();
+        assertEquals("4", signal.getType());
+        assertEquals("3\u6839K\u7EBF\u4E2D2\u6839\u6EE1\u8DB3\u89C4\u5219", signal.getTitle());
+        assertSame(closedKlines.get(4), signal.getKline());
     }
 
     private BinanceSymbolsDetailDTO tradingSymbol(String symbol) {

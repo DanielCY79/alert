@@ -19,6 +19,10 @@ import java.util.function.Predicate;
 public class AlertSymbolProcessor {
 
     private static final long BACK_COOLDOWN_PERIOD = 2 * 60 * 60 * 1000L;
+    private static final String TITLE_CONTINUOUS_THREE = "\u8FDE\u7EED 3 \u6839K\u7EBF\u62C9\u5347";
+    private static final String TITLE_BACKTRACK = "\u56DE\u8E29\u4EA4\u6613\u5BF9";
+    private static final String TITLE_CONTINUOUS_TWO = "\u8FDE\u7EED 2 \u6839K\u7EBF\u62C9\u5347";
+    private static final String TITLE_TWO_OF_THREE = "3\u6839K\u7EBF\u4E2D2\u6839\u6EE1\u8DB3\u89C4\u5219";
 
     @Value("${monitoring.exclude.symbol:}")
     private String excludeSymbol;
@@ -54,20 +58,25 @@ public class AlertSymbolProcessor {
         List<BinanceKlineDTO> recentThreeClosedKlines = takeLast(closedKlines, 3);
         if (recentThreeClosedKlines.size() == 3
                 && allMatch(recentThreeClosedKlines, alertRuleEvaluator::isContinuousThreeMatch)) {
-            alertNotificationService.send(new AlertSignal("\u8FDE\u7EED 3 \u6839K\u7EBF\u62C9\u5347", latestClosedKline, "1"));
+            alertNotificationService.send(new AlertSignal(TITLE_CONTINUOUS_THREE, latestClosedKline, "1"));
             backRecords.put(symbolDTO.getSymbol(), System.currentTimeMillis());
+        }
+
+        if (recentThreeClosedKlines.size() == 3
+                && countMatches(recentThreeClosedKlines, alertRuleEvaluator::isContinuousThreeMatch) == 2) {
+            alertNotificationService.send(new AlertSignal(TITLE_TWO_OF_THREE, latestClosedKline, "4"));
         }
 
         // Backtrack signals only make sense after a prior three-candle rise signal.
         if (backRecords.containsKey(symbolDTO.getSymbol())
                 && alertRuleEvaluator.isBacktrackMatch(latestClosedKline)) {
-            alertNotificationService.send(new AlertSignal("\u56DE\u8E29\u4EA4\u6613\u5BF9", latestClosedKline, "2"));
+            alertNotificationService.send(new AlertSignal(TITLE_BACKTRACK, latestClosedKline, "2"));
         }
 
         List<BinanceKlineDTO> recentTwoClosedKlines = takeLast(closedKlines, 2);
         if (recentTwoClosedKlines.size() == 2
                 && allMatch(recentTwoClosedKlines, alertRuleEvaluator::isContinuousTwoMatch)) {
-            alertNotificationService.send(new AlertSignal("\u8FDE\u7EED 2 \u6839K\u7EBF\u62C9\u5347", latestClosedKline, "3"));
+            alertNotificationService.send(new AlertSignal(TITLE_CONTINUOUS_TWO, latestClosedKline, "3"));
         }
     }
 
@@ -121,5 +130,18 @@ public class AlertSymbolProcessor {
             }
         }
         return true;
+    }
+
+    private int countMatches(List<BinanceKlineDTO> klines, Predicate<BinanceKlineDTO> predicate) {
+        if (CollectionUtils.isEmpty(klines)) {
+            return 0;
+        }
+        int count = 0;
+        for (BinanceKlineDTO kline : klines) {
+            if (predicate.test(kline)) {
+                count++;
+            }
+        }
+        return count;
     }
 }
