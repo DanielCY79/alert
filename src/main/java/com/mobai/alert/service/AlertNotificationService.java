@@ -18,35 +18,38 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AlertNotificationService {
 
     private static final long COOLDOWN_PERIOD = 2 * 60 * 60 * 1000L;
+    private static final long HIGHLIGHT_PERIOD = 24 * 60 * 60 * 1000L;
     private static final DateTimeFormatter MESSAGE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
 
     private final FeishuBotApi feishuBotApi;
     private final Map<String, Long> sentRecords = new ConcurrentHashMap<>();
+    private final Map<String, Long> highlightRecords = new ConcurrentHashMap<>();
 
     public AlertNotificationService(FeishuBotApi feishuBotApi) {
         this.feishuBotApi = feishuBotApi;
     }
 
-    /**
-     * 统一负责消息冷却和企业微信发送。
-     */
     public void send(AlertSignal signal) {
-        String recordKey = signal.getKline().getSymbol() + signal.getType();
+        String recordKey = buildRecordKey(signal);
         if (!allowSend(recordKey)) {
-            System.out.println("[\u62D2\u7EDD] " + recordKey + " \u51B7\u5374\u65F6\u95F4\u5185\u5DF2\u53D1\u9001\u8FC7\u901A\u77E5");
+            System.out.println("[拒绝] " + recordKey + " 冷却时间内已发送过通知");
             return;
         }
-        feishuBotApi.sendGroupMessage(buildMessage(signal));
+        feishuBotApi.sendGroupMessage(buildTitle(signal), buildBody(signal), shouldHighlightTitle(recordKey));
     }
 
     @Scheduled(fixedDelay = 5 * 60 * 1000L)
-    public void cleanupExpiredRecords() {
+    public synchronized void cleanupExpiredRecords() {
         long currentTime = System.currentTimeMillis();
         sentRecords.entrySet().removeIf(entry -> currentTime - entry.getValue() > COOLDOWN_PERIOD);
+        highlightRecords.entrySet().removeIf(entry -> currentTime - entry.getValue() > HIGHLIGHT_PERIOD);
     }
 
-    private boolean allowSend(String recordKey) {
-        // 用“交易对 + 信号类型”作为冷却维度，避免同类消息短时间重复轰炸。
+    private String buildRecordKey(AlertSignal signal) {
+        return signal.getKline().getSymbol() + signal.getType();
+    }
+
+    private synchronized boolean allowSend(String recordKey) {
         long currentTime = System.currentTimeMillis();
         Long lastSentTime = sentRecords.get(recordKey);
         if (lastSentTime == null || currentTime - lastSentTime > COOLDOWN_PERIOD) {
@@ -56,8 +59,21 @@ public class AlertNotificationService {
         return false;
     }
 
-    private String buildMessage(AlertSignal signal) {
-        // 消息内容在这里统一组装，避免业务处理类拼接通知文案。
+    private synchronized boolean shouldHighlightTitle(String recordKey) {
+        long currentTime = System.currentTimeMillis();
+        Long lastHighlightedTime = highlightRecords.get(recordKey);
+        if (lastHighlightedTime == null || currentTime - lastHighlightedTime > HIGHLIGHT_PERIOD) {
+            highlightRecords.put(recordKey, currentTime);
+            return true;
+        }
+        return false;
+    }
+
+    private String buildTitle(AlertSignal signal) {
+        return signal.getTitle() + "：" + signal.getKline().getSymbol();
+    }
+
+    private String buildBody(AlertSignal signal) {
         BinanceKlineDTO kline = signal.getKline();
         BigDecimal closePrice = new BigDecimal(kline.getClose()).setScale(4, RoundingMode.HALF_DOWN);
         BigDecimal amplitude = calculateAmplitude(kline).multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP);
@@ -65,13 +81,12 @@ public class AlertNotificationService {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime klineTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(kline.getEndTime()), ZoneId.systemDefault());
 
-        return signal.getTitle() + "：" + kline.getSymbol() + "\n"
-                + "收盘价：" + closePrice + " USDT\n"
+        return "收盘价：" + closePrice + " USDT\n"
                 + "振幅：" + amplitude + "%\n"
-                + "成交额：" + volume + "万USDT\n"
+                + "成交额：" + volume + " 万USDT\n"
                 + "当前时间：" + MESSAGE_TIME_FORMATTER.format(now) + "\n"
                 + "K线时间：" + MESSAGE_TIME_FORMATTER.format(klineTime) + "\n"
-                + "实时K线图：https://www.binance.com/en/futures/" + kline.getSymbol() + "?type=spot&layout=pro&interval=1m";
+                + "[实时K线图](https://www.binance.com/en/futures/" + kline.getSymbol() + "?type=spot&layout=pro&interval=1m)";
     }
 
     private BigDecimal calculateAmplitude(BinanceKlineDTO kline) {
