@@ -5,6 +5,11 @@ import com.mobai.alert.dto.BinanceKlineDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.anyString;
@@ -17,7 +22,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class AlertNotificationServiceTest {
 
     @Test
-    void shouldHighlightFirstNotificationWithin24Hours() {
+    void shouldHighlightFirstNotificationOfTheDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
 
@@ -27,7 +32,7 @@ class AlertNotificationServiceTest {
     }
 
     @Test
-    void shouldKeepCooldownEvenWhenHighlightWindowExists() {
+    void shouldKeepCooldownEvenWhenTodayHasNoGreyMessageYet() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
 
@@ -40,7 +45,7 @@ class AlertNotificationServiceTest {
     }
 
     @Test
-    void shouldOnlyHighlightOnceWithin24HoursAfterCooldownExpires() {
+    void shouldUseGreyAfterCooldownWhenItIsStillTheSameDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
         AlertSignal signal = signal("BTCUSDT", "1");
@@ -49,7 +54,7 @@ class AlertNotificationServiceTest {
         service.send(signal);
         reset(feishuBotApi);
 
-        Map<String, Long> sentRecords = getRecordMap(service, "sentRecords");
+        Map<String, Long> sentRecords = getLongRecordMap(service, "sentRecords");
         sentRecords.put(recordKey, System.currentTimeMillis() - (2 * 60 * 60 * 1000L) - 1);
 
         service.send(signal);
@@ -58,7 +63,7 @@ class AlertNotificationServiceTest {
     }
 
     @Test
-    void shouldHighlightAgainAfter24Hours() {
+    void shouldHighlightAgainOnNextNaturalDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
         AlertSignal signal = signal("BTCUSDT", "1");
@@ -67,19 +72,52 @@ class AlertNotificationServiceTest {
         service.send(signal);
         reset(feishuBotApi);
 
-        Map<String, Long> sentRecords = getRecordMap(service, "sentRecords");
-        Map<String, Long> highlightRecords = getRecordMap(service, "highlightRecords");
+        Map<String, Long> sentRecords = getLongRecordMap(service, "sentRecords");
+        Map<String, String> highlightRecords = getStringRecordMap(service, "highlightRecords");
         sentRecords.put(recordKey, System.currentTimeMillis() - (2 * 60 * 60 * 1000L) - 1);
-        highlightRecords.put(recordKey, System.currentTimeMillis() - (24 * 60 * 60 * 1000L) - 1);
+        highlightRecords.put(recordKey, LocalDate.now().minusDays(1).toString());
 
         service.send(signal);
 
         verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
 
+    @Test
+    void shouldLoadTodayHighlightRecordFromLocalFile() throws IOException {
+        FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
+        AlertNotificationService service = new AlertNotificationService(feishuBotApi);
+        AlertSignal signal = signal("BTCUSDT", "1");
+        String recordKey = "BTCUSDT1";
+        Path tempFile = Files.createTempFile("feishu-highlight-records", ".json");
+
+        try {
+            Files.writeString(
+                    tempFile,
+                    "{\"" + recordKey + "\":\"" + LocalDate.now() + "\"}",
+                    StandardCharsets.UTF_8
+            );
+            ReflectionTestUtils.setField(service, "highlightRecordFilePath", tempFile);
+            service.initHighlightRecords();
+
+            Map<String, Long> sentRecords = getLongRecordMap(service, "sentRecords");
+            sentRecords.put(recordKey, System.currentTimeMillis() - (2 * 60 * 60 * 1000L) - 1);
+
+            service.send(signal);
+
+            verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(false));
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
+    }
+
     @SuppressWarnings("unchecked")
-    private Map<String, Long> getRecordMap(AlertNotificationService service, String fieldName) {
+    private Map<String, Long> getLongRecordMap(AlertNotificationService service, String fieldName) {
         return (Map<String, Long>) ReflectionTestUtils.getField(service, fieldName);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> getStringRecordMap(AlertNotificationService service, String fieldName) {
+        return (Map<String, String>) ReflectionTestUtils.getField(service, fieldName);
     }
 
     private AlertSignal signal(String symbol, String type) {
@@ -90,6 +128,6 @@ class AlertNotificationServiceTest {
         kline.setLow("1");
         kline.setVolume("100000");
         kline.setEndTime(System.currentTimeMillis());
-        return new AlertSignal("测试通知", kline, type);
+        return new AlertSignal("Test Alert", kline, type);
     }
 }

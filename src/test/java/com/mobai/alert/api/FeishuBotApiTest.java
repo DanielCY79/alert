@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -27,7 +26,7 @@ class FeishuBotApiTest {
         when(restTemplate.postForObject(eq("http://localhost/test"), any(HttpEntity.class), eq(String.class)))
                 .thenReturn("{\"code\":0}");
 
-        api.sendGroupMessage("连续 3 根K线拉升：BTCUSDT", "收盘价：1.0000 USDT", true);
+        api.sendGroupMessage("Test Title", "Close: 1.0000 USDT", true);
 
         ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
         verify(restTemplate).postForObject(eq("http://localhost/test"), requestCaptor.capture(), eq(String.class));
@@ -44,20 +43,20 @@ class FeishuBotApiTest {
 
         assertEquals("yellow", header.get("template"));
         assertEquals("plain_text", title.get("tag"));
-        assertEquals("连续 3 根K线拉升：BTCUSDT", title.get("content"));
+        assertEquals("Test Title", title.get("content"));
         assertEquals("lark_md", text.get("tag"));
-        assertEquals("收盘价：1.0000 USDT", text.get("content"));
+        assertEquals("Close: 1.0000 USDT", text.get("content"));
     }
 
     @Test
-    void shouldNotSetHeaderTemplateWhenMessageIsNotHighlighted() {
+    void shouldSetGreyHeaderTemplateWhenMessageIsNotHighlighted() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         FeishuBotApi api = new FeishuBotApi(restTemplate);
         ReflectionTestUtils.setField(api, "webhookUrl", "http://localhost/test");
         when(restTemplate.postForObject(eq("http://localhost/test"), any(HttpEntity.class), eq(String.class)))
                 .thenReturn("{\"code\":0}");
 
-        api.sendGroupMessage("回踩交易对：BTCUSDT", "收盘价：1.0000 USDT", false);
+        api.sendGroupMessage("Test Title", "Close: 1.0000 USDT", false);
 
         ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
         verify(restTemplate).postForObject(eq("http://localhost/test"), requestCaptor.capture(), eq(String.class));
@@ -66,7 +65,7 @@ class FeishuBotApiTest {
         Map<String, Object> card = castMap(payload.get("card"));
         Map<String, Object> header = castMap(card.get("header"));
 
-        assertFalse(header.containsKey("template"));
+        assertEquals("grey", header.get("template"));
     }
 
     @SuppressWarnings("unchecked")

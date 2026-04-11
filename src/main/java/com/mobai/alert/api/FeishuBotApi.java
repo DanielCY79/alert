@@ -51,6 +51,8 @@ public class FeishuBotApi {
         header.put("title", headerTitle);
         if (highlightTitle) {
             header.put("template", "yellow");
+        } else {
+            header.put("template", "grey");
         }
         card.put("header", header);
 
