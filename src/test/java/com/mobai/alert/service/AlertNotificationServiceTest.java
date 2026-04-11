@@ -19,8 +19,14 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+/**
+ * 告警通知服务测试。
+ */
 class AlertNotificationServiceTest {
 
+    /**
+     * 当天首次通知应高亮标题。
+     */
     @Test
     void shouldHighlightFirstNotificationOfTheDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
@@ -31,6 +37,9 @@ class AlertNotificationServiceTest {
         verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
 
+    /**
+     * 冷却期内重复发送应被直接拦截。
+     */
     @Test
     void shouldKeepCooldownEvenWhenTodayHasNoGreyMessageYet() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
@@ -44,6 +53,9 @@ class AlertNotificationServiceTest {
         verifyNoInteractions(feishuBotApi);
     }
 
+    /**
+     * 同一天内冷却结束后再次通知，应切换为灰色标题。
+     */
     @Test
     void shouldUseGreyAfterCooldownWhenItIsStillTheSameDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
@@ -62,6 +74,9 @@ class AlertNotificationServiceTest {
         verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(false));
     }
 
+    /**
+     * 跨天后再次通知，应重新高亮标题。
+     */
     @Test
     void shouldHighlightAgainOnNextNaturalDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
@@ -82,6 +97,9 @@ class AlertNotificationServiceTest {
         verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
 
+    /**
+     * 启动时应从本地文件恢复当天高亮记录。
+     */
     @Test
     void shouldLoadTodayHighlightRecordFromLocalFile() throws IOException {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
@@ -120,6 +138,9 @@ class AlertNotificationServiceTest {
         return (Map<String, String>) ReflectionTestUtils.getField(service, fieldName);
     }
 
+    /**
+     * 构造测试用告警信号。
+     */
     private AlertSignal signal(String symbol, String type) {
         BinanceKlineDTO kline = new BinanceKlineDTO();
         kline.setSymbol(symbol);
@@ -128,6 +149,6 @@ class AlertNotificationServiceTest {
         kline.setLow("1");
         kline.setVolume("100000");
         kline.setEndTime(System.currentTimeMillis());
-        return new AlertSignal("Test Alert", kline, type);
+        return new AlertSignal("测试告警", kline, type);
     }
 }

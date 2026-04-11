@@ -19,6 +19,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 交易对告警处理器测试。
+ */
 class AlertSymbolProcessorTest {
 
     private BinanceMarketDataService binanceMarketDataService;
@@ -35,6 +38,9 @@ class AlertSymbolProcessorTest {
         ReflectionTestUtils.setField(processor, "excludeSymbol", "");
     }
 
+    /**
+     * 三连涨判断必须基于最近三根已收盘 K 线。
+     */
     @Test
     void shouldRequireThreeClosedKlinesForContinuousThreeSignal() {
         BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
@@ -58,6 +64,9 @@ class AlertSymbolProcessorTest {
         assertEquals("4", signalCaptor.getValue().getType());
     }
 
+    /**
+     * 告警信号应引用最近一根已收盘 K 线。
+     */
     @Test
     void shouldUseLatestClosedKlineAsSignalReference() {
         BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
@@ -89,6 +98,9 @@ class AlertSymbolProcessorTest {
         assertTrue(signals.stream().allMatch(signal -> signal.getKline() == closedKlines.get(4)));
     }
 
+    /**
+     * 最近三根 K 线中恰好两根命中时，应发送“3根中2根满足规则”告警。
+     */
     @Test
     void shouldSendTwoOfThreeSignalWhenExactlyTwoRecentKlinesMatch() {
         BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
@@ -115,10 +127,13 @@ class AlertSymbolProcessorTest {
 
         AlertSignal signal = signalCaptor.getValue();
         assertEquals("4", signal.getType());
-        assertEquals("3\u6839K\u7EBF\u4E2D2\u6839\u6EE1\u8DB3\u89C4\u5219", signal.getTitle());
+        assertEquals("3根K线中2根满足规则", signal.getTitle());
         assertSame(closedKlines.get(4), signal.getKline());
     }
 
+    /**
+     * 构造可交易交易对。
+     */
     private BinanceSymbolsDetailDTO tradingSymbol(String symbol) {
         BinanceSymbolsDetailDTO dto = new BinanceSymbolsDetailDTO();
         dto.setSymbol(symbol);
@@ -126,6 +141,9 @@ class AlertSymbolProcessorTest {
         return dto;
     }
 
+    /**
+     * 构造测试用 K 线。
+     */
     private BinanceKlineDTO kline(String symbol, long endTime) {
         BinanceKlineDTO dto = new BinanceKlineDTO();
         dto.setSymbol(symbol);

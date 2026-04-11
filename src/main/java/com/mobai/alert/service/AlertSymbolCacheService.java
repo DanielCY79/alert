@@ -18,6 +18,9 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Objects;
 
+/**
+ * 交易对缓存服务，按天缓存交易对列表，减少对 Binance 的重复请求。
+ */
 @Service
 public class AlertSymbolCacheService {
 
@@ -29,7 +32,8 @@ public class AlertSymbolCacheService {
     }
 
     /**
-     * 交易对列表按天缓存，避免每分钟都去拉取一次全量交易对。
+     * 加载交易对列表。
+     * 当天缓存可直接复用，跨天后会重新拉取并覆盖本地缓存。
      */
     public BinanceSymbolsDTO loadSymbols() throws IOException {
         if (Files.exists(cacheFilePath) && Files.size(cacheFilePath) > 0) {
@@ -40,7 +44,6 @@ public class AlertSymbolCacheService {
                     .toLocalDateTime();
 
             if (isToday(lastModifiedTime)) {
-                // 当天缓存直接复用，只有内容为空时才重新刷新。
                 String content = Files.readString(cacheFilePath, StandardCharsets.UTF_8);
                 if (!StringUtils.hasText(content) || "{}".equals(content)) {
                     return refreshSymbols();
@@ -54,16 +57,24 @@ public class AlertSymbolCacheService {
         return refreshSymbols();
     }
 
+    /**
+     * 判断缓存时间是否为当天。
+     */
     private boolean isToday(LocalDateTime dateTime) {
         return LocalDate.now().equals(dateTime.toLocalDate());
     }
 
+    /**
+     * 清空旧缓存内容。
+     */
     private void clearFileContent() throws IOException {
         Files.writeString(cacheFilePath, "", StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
     }
 
+    /**
+     * 从远端刷新交易对列表，并立即写回本地缓存。
+     */
     private BinanceSymbolsDTO refreshSymbols() {
-        // 刷新后立即覆盖本地缓存，方便下一轮调度直接读取。
         BinanceSymbolsDTO symbolsDTO = binanceApi.listSymbols();
         try {
             Files.writeString(

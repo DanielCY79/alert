@@ -1,9 +1,17 @@
 package com.mobai.alert.dto;
 
+/**
+ * 单个交易对的基础信息。
+ */
 public class BinanceSymbolsDetailDTO {
-    private String symbol;
+
     /**
-     * 交易状态 TRADING-交易中
+     * 交易对名称，例如 BTCUSDT。
+     */
+    private String symbol;
+
+    /**
+     * 交易状态，例如 TRADING 表示可交易。
      */
     private String status;
 

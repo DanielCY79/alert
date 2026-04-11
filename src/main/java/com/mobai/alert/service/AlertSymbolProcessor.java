@@ -15,14 +15,17 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
+/**
+ * 单个交易对处理器，负责读取最近 K 线并根据规则生成告警。
+ */
 @Service
 public class AlertSymbolProcessor {
 
     private static final long BACK_COOLDOWN_PERIOD = 2 * 60 * 60 * 1000L;
-    private static final String TITLE_CONTINUOUS_THREE = "\u8FDE\u7EED 3 \u6839K\u7EBF\u62C9\u5347";
-    private static final String TITLE_BACKTRACK = "\u56DE\u8E29\u4EA4\u6613\u5BF9";
-    private static final String TITLE_CONTINUOUS_TWO = "\u8FDE\u7EED 2 \u6839K\u7EBF\u62C9\u5347";
-    private static final String TITLE_TWO_OF_THREE = "3\u6839K\u7EBF\u4E2D2\u6839\u6EE1\u8DB3\u89C4\u5219";
+    private static final String TITLE_CONTINUOUS_THREE = "连续 3 根K线拉升";
+    private static final String TITLE_BACKTRACK = "回踩交易对";
+    private static final String TITLE_CONTINUOUS_TWO = "连续 2 根K线拉升";
+    private static final String TITLE_TWO_OF_THREE = "3根K线中2根满足规则";
 
     @Value("${monitoring.exclude.symbol:}")
     private String excludeSymbol;
@@ -41,7 +44,7 @@ public class AlertSymbolProcessor {
     }
 
     /**
-     * Process a single symbol by loading recent closed klines, evaluating rules, and sending alerts.
+     * 处理单个交易对，加载最近已收盘 K 线并执行告警判定。
      */
     public void process(BinanceSymbolsDetailDTO symbolDTO) {
         if (shouldSkip(symbolDTO)) {
@@ -67,7 +70,7 @@ public class AlertSymbolProcessor {
             alertNotificationService.send(new AlertSignal(TITLE_TWO_OF_THREE, latestClosedKline, "4"));
         }
 
-        // Backtrack signals only make sense after a prior three-candle rise signal.
+        // 回踩信号只有在此前出现过三连涨的前提下才有意义。
         if (backRecords.containsKey(symbolDTO.getSymbol())
                 && alertRuleEvaluator.isBacktrackMatch(latestClosedKline)) {
             alertNotificationService.send(new AlertSignal(TITLE_BACKTRACK, latestClosedKline, "2"));
@@ -80,14 +83,19 @@ public class AlertSymbolProcessor {
         }
     }
 
+    /**
+     * 定时清理回踩判断使用的历史记录。
+     */
     @Scheduled(fixedDelay = 5 * 60 * 1000L)
     public void cleanupExpiredBackRecords() {
         long currentTime = System.currentTimeMillis();
         backRecords.entrySet().removeIf(entry -> currentTime - entry.getValue() > BACK_COOLDOWN_PERIOD);
     }
 
+    /**
+     * 判断当前交易对是否应当跳过处理。
+     */
     private boolean shouldSkip(BinanceSymbolsDetailDTO symbolDTO) {
-        // Only process tradable USDT symbols that are not manually excluded.
         String symbol = symbolDTO.getSymbol();
         if (!StringUtils.hasText(symbol) || !symbol.contains("USDT")) {
             return true;
@@ -98,6 +106,9 @@ public class AlertSymbolProcessor {
         return !Objects.equals(symbolDTO.getStatus(), "TRADING");
     }
 
+    /**
+     * 判断交易对是否在手工排除名单中。
+     */
     private boolean isExcluded(String symbol) {
         if (!StringUtils.hasText(excludeSymbol)) {
             return false;
@@ -108,10 +119,16 @@ public class AlertSymbolProcessor {
                 .anyMatch(symbol::equals);
     }
 
+    /**
+     * 加载最近已收盘的 1 分钟 K 线。
+     */
     private List<BinanceKlineDTO> loadRecentClosedKlines(String symbol) {
         return binanceMarketDataService.loadRecentClosedKlines(symbol, "1m", 5);
     }
 
+    /**
+     * 取列表最后 N 条数据。
+     */
     private List<BinanceKlineDTO> takeLast(List<BinanceKlineDTO> klines, int count) {
         if (CollectionUtils.isEmpty(klines) || count <= 0) {
             return List.of();
@@ -120,6 +137,9 @@ public class AlertSymbolProcessor {
         return klines.subList(fromIndex, klines.size());
     }
 
+    /**
+     * 判断列表中的每一条 K 线都满足指定条件。
+     */
     private boolean allMatch(List<BinanceKlineDTO> klines, Predicate<BinanceKlineDTO> predicate) {
         if (CollectionUtils.isEmpty(klines)) {
             return false;
@@ -132,6 +152,9 @@ public class AlertSymbolProcessor {
         return true;
     }
 
+    /**
+     * 统计列表中满足条件的 K 线数量。
+     */
     private int countMatches(List<BinanceKlineDTO> klines, Predicate<BinanceKlineDTO> predicate) {
         if (CollectionUtils.isEmpty(klines)) {
             return 0;

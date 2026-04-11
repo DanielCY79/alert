@@ -15,6 +15,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
+/**
+ * 告警调度服务，负责按周期刷新交易对、同步行情订阅并触发逐个处理。
+ */
 @Service
 public class AlertService {
 
@@ -33,7 +36,7 @@ public class AlertService {
     }
 
     /**
-     * Scheduled entry that refreshes the symbol list and dispatches it to processors.
+     * 定时执行监控主流程。
      */
     @Scheduled(fixedRateString = "${monitoring.cycle:60000}")
     public void monitoring() {
@@ -55,8 +58,10 @@ public class AlertService {
         System.out.println("Monitoring finished " + LOG_TIME_FORMATTER.format(LocalDateTime.now()));
     }
 
+    /**
+     * 并发处理交易对，线程池大小不会超过交易对数量，避免空闲线程。
+     */
     private void processSymbols(List<BinanceSymbolsDetailDTO> symbols, int threadCount) {
-        // Keep the pool size bounded by the symbol count to avoid idle threads.
         int poolSize = Math.max(1, Math.min(threadCount, symbols.size()));
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
         try {

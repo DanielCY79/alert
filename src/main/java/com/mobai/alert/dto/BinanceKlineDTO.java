@@ -1,97 +1,77 @@
 package com.mobai.alert.dto;
 
+/**
+ * Binance K 线数据传输对象。
+ */
 public class BinanceKlineDTO {
+
     /**
-     * 交易对
+     * 交易对名称。
      */
     private String symbol;
 
     /**
-     * 时间间隔
+     * K 线周期，例如 1m、5m。
      */
     private String interval;
 
     /**
-     * 起始时间 毫秒时间戳
+     * 开始时间，毫秒时间戳。
      */
     private Long startTime;
 
     /**
-     * 结束时间 毫秒时间戳
+     * 结束时间，毫秒时间戳。
      */
     private Long endTime;
 
     /**
-     * 时区
+     * 时区参数。
      */
     private String timeZone;
 
-    public String getTimeZone() {
-        return timeZone;
-    }
-
-    public void setTimeZone(String timeZone) {
-        this.timeZone = timeZone;
-    }
-
     /**
-     * 数据量限制 默认值500，最大1000
+     * 返回条数限制，默认 500，最大 1000。
      */
     private Integer limit;
 
     /**
-     * 最低价
+     * 最低价。
      */
     private String low;
 
     /**
-     * 最高价
+     * 最高价。
      */
     private String high;
 
     /**
-     * 开盘价
+     * 开盘价。
      */
     private String open;
 
     /**
-     * 收盘价
+     * 收盘价。
      */
     private String close;
 
-    public String getOpen() {
-        return open;
-    }
-
-    public void setOpen(String open) {
-        this.open = open;
-    }
-
-    public String getClose() {
-        return close;
-    }
-
-    public void setClose(String close) {
-        this.close = close;
-    }
-
     /**
-     * 成交量
+     * 成交量。
      */
     private String amount;
 
     /**
-     * 成交额
+     * 成交额。
      */
     private String volume;
 
     /**
-     * 开盘时间
+     * 开盘时间文本。
      */
     private String openTime;
 
     /**
-     * 收盘时间
+     * 收盘时间文本。
      */
     private String closeTime;
 
@@ -127,6 +107,14 @@ public class BinanceKlineDTO {
         this.endTime = endTime;
     }
 
+    public String getTimeZone() {
+        return timeZone;
+    }
+
+    public void setTimeZone(String timeZone) {
+        this.timeZone = timeZone;
+    }
+
     public Integer getLimit() {
         return limit;
     }
@@ -149,6 +137,22 @@ public class BinanceKlineDTO {
 
     public void setHigh(String high) {
         this.high = high;
+    }
+
+    public String getOpen() {
+        return open;
+    }
+
+    public void setOpen(String open) {
+        this.open = open;
+    }
+
+    public String getClose() {
+        return close;
+    }
+
+    public void setClose(String close) {
+        this.close = close;
     }
 
     public String getAmount() {

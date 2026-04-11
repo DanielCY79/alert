@@ -16,8 +16,12 @@ import org.springframework.web.client.RestTemplate;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Binance REST API 访问封装，负责拉取交易对列表和 K 线数据。
+ */
 @Component
 public class BinanceApi {
+
     private static final String BASE_URL = "https://api.binance.com/api/v3/ticker/price";
     private static final String KLINE_BASE_URL = "https://fapi.binance.com/fapi/v1/klines";
     private static final String SYMBOLS_BASE_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
@@ -28,24 +32,19 @@ public class BinanceApi {
     private String apiKey = "6JyypvY7m4zramFJkkWbgy";
 
     /**
-     * 测试代码
+     * 简单验证行情接口是否可访问。
      */
     public void testTime() {
-        // 创建 HttpHeaders 并添加自定义 Header
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-MBX-APIKEY", apiKey); // 替换为你的API Key
+        headers.set("X-MBX-APIKEY", apiKey);
 
-        // 使用 HttpEntity 包装请求头
         HttpEntity<String> entity = new HttpEntity<>(headers);
         String url = BASE_URL + "?symbol=BTCUSDT";
 
-        // 发送请求并接收响应
         ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
 
         try {
-            // 使用 FastJSON 解析响应体
             JSONObject jsonObject = JSON.parseObject(response.getBody());
-
             System.out.println("Symbol: " + jsonObject.getString("symbol"));
             System.out.println("Price: " + jsonObject.getString("price"));
         } catch (Exception e) {
@@ -53,18 +52,20 @@ public class BinanceApi {
         }
     }
 
+    /**
+     * 查询指定交易对的 K 线数据。
+     *
+     * @param reqDTO 查询参数
+     * @return K 线列表
+     */
     public List<BinanceKlineDTO> listKline(BinanceKlineDTO reqDTO) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-MBX-APIKEY", apiKey);
-        // 使用 HttpEntity 包装请求头
         HttpEntity<String> entity = new HttpEntity<>(headers);
-        // 组装参数
+
         String url = KLINE_BASE_URL + "?symbol=" + reqDTO.getSymbol();
         url = url + "&interval=" + reqDTO.getInterval();
-//        url = url + "&startTime=" + reqDTO.getStartTime();
-//        url = url + "&endTime=" + reqDTO.getEndTime();
         url = url + "&limit=" + reqDTO.getLimit();
-//        url = url + "&timeZone=" + reqDTO.getTimeZone();
 
         List<BinanceKlineDTO> binanceKlineDTOS = new ArrayList<>();
         try {
@@ -92,18 +93,20 @@ public class BinanceApi {
         return binanceKlineDTOS;
     }
 
+    /**
+     * 查询 Binance 期货交易对列表。
+     *
+     * @return 交易对列表响应
+     */
     public BinanceSymbolsDTO listSymbols() {
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-MBX-APIKEY", apiKey);
-        // 使用 HttpEntity 包装请求头
         HttpEntity<String> entity = new HttpEntity<>(headers);
-        // 组装参数
-        String url = SYMBOLS_BASE_URL;
+
         try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+            ResponseEntity<String> response = restTemplate.exchange(SYMBOLS_BASE_URL, HttpMethod.GET, entity, String.class);
             System.out.println("listSymbols res:" + response.getBody());
-            BinanceSymbolsDTO symbolsDTO = JSON.parseObject(response.getBody(), BinanceSymbolsDTO.class);
-            return symbolsDTO;
+            return JSON.parseObject(response.getBody(), BinanceSymbolsDTO.class);
         } catch (Exception e) {
             e.printStackTrace();
         }

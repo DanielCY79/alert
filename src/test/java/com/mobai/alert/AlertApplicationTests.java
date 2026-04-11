@@ -1,11 +1,13 @@
 package com.mobai.alert;
 
+import com.mobai.alert.service.AlertService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import com.mobai.alert.service.AlertService;
-
+/**
+ * Spring Boot 上下文加载测试。
+ */
 @SpringBootTest(properties = {
         "spring.task.scheduling.enabled=false",
         "market.data.mode=rest",
@@ -14,11 +16,13 @@ import com.mobai.alert.service.AlertService;
 })
 class AlertApplicationTests {
 
-	@MockitoBean
-	private AlertService alertService;
+    @MockitoBean
+    private AlertService alertService;
 
-	@Test
-	void contextLoads() {
-	}
-
+    /**
+     * 验证应用上下文可以正常启动。
+     */
+    @Test
+    void contextLoads() {
+    }
 }

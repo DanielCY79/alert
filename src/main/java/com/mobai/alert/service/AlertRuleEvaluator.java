@@ -7,6 +7,9 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+/**
+ * 告警规则计算器，负责判断连续上涨、回踩等条件是否命中。
+ */
 @Service
 public class AlertRuleEvaluator {
 
@@ -35,8 +38,8 @@ public class AlertRuleEvaluator {
     private String twoVolumeLow;
 
     /**
-     * 连续三根上涨的基础条件：
-     * 收盘价高于开盘价，振幅在阈值区间内，且成交额命中范围。
+     * 判断单根 K 线是否满足“三连涨”使用的基础条件。
+     * 要求为阳线，振幅落在设定区间内，且成交额位于阈值范围内。
      */
     public boolean isContinuousThreeMatch(BinanceKlineDTO kline) {
         if (!isRising(kline)) {
@@ -54,7 +57,8 @@ public class AlertRuleEvaluator {
     }
 
     /**
-     * 两连涨使用较宽松的阈值，只校验最低振幅和最低成交额。
+     * 判断单根 K 线是否满足“两连涨”条件。
+     * 该规则仅校验最小振幅和最小成交额。
      */
     public boolean isContinuousTwoMatch(BinanceKlineDTO kline) {
         if (!isRising(kline)) {
@@ -70,7 +74,8 @@ public class AlertRuleEvaluator {
     }
 
     /**
-     * 回踩信号要求当前已收盘 K 线为阴线，并且跌幅、成交额都达到配置阈值。
+     * 判断当前 K 线是否满足回踩条件。
+     * 要求为阴线，跌幅达到阈值，且成交额不低于配置下限。
      */
     public boolean isBacktrackMatch(BinanceKlineDTO kline) {
         BigDecimal open = new BigDecimal(kline.getOpen());
@@ -87,14 +92,19 @@ public class AlertRuleEvaluator {
         return new BigDecimal(kline.getVolume()).compareTo(new BigDecimal(volumeBackLow)) >= 0;
     }
 
+    /**
+     * 判断当前 K 线是否为阳线。
+     */
     private boolean isRising(BinanceKlineDTO kline) {
         BigDecimal open = new BigDecimal(kline.getOpen());
         BigDecimal close = new BigDecimal(kline.getClose());
         return close.compareTo(open) > 0;
     }
 
+    /**
+     * 振幅统一按 (high - low) / low 计算，返回小数值而非百分比。
+     */
     private BigDecimal calculateAmplitude(BinanceKlineDTO kline) {
-        // 振幅统一按 (high - low) / low 计算，返回小数值而非百分比。
         BigDecimal high = new BigDecimal(kline.getHigh());
         BigDecimal low = new BigDecimal(kline.getLow());
         return high.subtract(low).divide(low, 6, RoundingMode.HALF_UP);

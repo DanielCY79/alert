@@ -12,6 +12,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
+/**
+ * 行情读取门面，按配置优先使用 WebSocket，必要时回退到 REST。
+ */
 @Service
 public class BinanceMarketDataService {
 
@@ -28,10 +31,17 @@ public class BinanceMarketDataService {
         this.binanceWebSocketService = binanceWebSocketService;
     }
 
+    /**
+     * 刷新 WebSocket 订阅交易对列表。
+     */
     public void refreshSubscriptions(List<BinanceSymbolsDetailDTO> symbols) {
         binanceWebSocketService.refreshSubscriptions(symbols);
     }
 
+    /**
+     * 加载最近已收盘的 K 线。
+     * 当 WebSocket 缓存不足时，会回退到 REST 并回填缓存。
+     */
     public List<BinanceKlineDTO> loadRecentClosedKlines(String symbol, String interval, int limit) {
         if (limit <= 0) {
             return Collections.emptyList();
@@ -51,6 +61,9 @@ public class BinanceMarketDataService {
         return restKlines;
     }
 
+    /**
+     * 通过 REST 拉取最近已收盘的 K 线。
+     */
     private List<BinanceKlineDTO> loadRecentClosedKlinesFromRest(String symbol, String interval, int limit) {
         BinanceKlineDTO reqDTO = new BinanceKlineDTO();
         reqDTO.setSymbol(symbol);
@@ -75,10 +88,16 @@ public class BinanceMarketDataService {
         return closedKlines.subList(closedKlines.size() - limit, closedKlines.size());
     }
 
+    /**
+     * 判断当前是否优先使用 WebSocket 数据源。
+     */
     private boolean preferWebSocket() {
         return !"rest".equals(normalizeMode());
     }
 
+    /**
+     * 统一规范化数据源模式字符串。
+     */
     private String normalizeMode() {
         if (marketDataMode == null || marketDataMode.isBlank()) {
             return "hybrid";

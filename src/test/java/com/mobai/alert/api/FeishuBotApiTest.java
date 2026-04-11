@@ -16,8 +16,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * 飞书机器人消息构造测试。
+ */
 class FeishuBotApiTest {
 
+    /**
+     * 高亮消息应使用黄色标题模板。
+     */
     @Test
     void shouldSendInteractiveCardWithYellowHeaderForHighlightedMessage() {
         RestTemplate restTemplate = mock(RestTemplate.class);
@@ -26,7 +32,7 @@ class FeishuBotApiTest {
         when(restTemplate.postForObject(eq("http://localhost/test"), any(HttpEntity.class), eq(String.class)))
                 .thenReturn("{\"code\":0}");
 
-        api.sendGroupMessage("Test Title", "Close: 1.0000 USDT", true);
+        api.sendGroupMessage("测试标题", "收盘价：1.0000 USDT", true);
 
         ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
         verify(restTemplate).postForObject(eq("http://localhost/test"), requestCaptor.capture(), eq(String.class));
@@ -43,11 +49,14 @@ class FeishuBotApiTest {
 
         assertEquals("yellow", header.get("template"));
         assertEquals("plain_text", title.get("tag"));
-        assertEquals("Test Title", title.get("content"));
+        assertEquals("测试标题", title.get("content"));
         assertEquals("lark_md", text.get("tag"));
-        assertEquals("Close: 1.0000 USDT", text.get("content"));
+        assertEquals("收盘价：1.0000 USDT", text.get("content"));
     }
 
+    /**
+     * 非高亮消息应使用灰色标题模板。
+     */
     @Test
     void shouldSetGreyHeaderTemplateWhenMessageIsNotHighlighted() {
         RestTemplate restTemplate = mock(RestTemplate.class);
@@ -56,7 +65,7 @@ class FeishuBotApiTest {
         when(restTemplate.postForObject(eq("http://localhost/test"), any(HttpEntity.class), eq(String.class)))
                 .thenReturn("{\"code\":0}");
 
-        api.sendGroupMessage("Test Title", "Close: 1.0000 USDT", false);
+        api.sendGroupMessage("测试标题", "收盘价：1.0000 USDT", false);
 
         ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
         verify(restTemplate).postForObject(eq("http://localhost/test"), requestCaptor.capture(), eq(String.class));

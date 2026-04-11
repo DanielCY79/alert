@@ -12,6 +12,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 飞书机器人通知封装，负责组装交互式卡片并发送到群 webhook。
+ */
 @Component
 public class FeishuBotApi {
 
@@ -24,6 +27,13 @@ public class FeishuBotApi {
         this.restTemplate = restTemplate;
     }
 
+    /**
+     * 发送飞书群消息。
+     *
+     * @param title 标题
+     * @param body 正文
+     * @param highlightTitle 是否高亮标题
+     */
     public void sendGroupMessage(String title, String body, boolean highlightTitle) {
         Map<String, Object> message = new HashMap<>();
         message.put("msg_type", "interactive");
@@ -37,6 +47,9 @@ public class FeishuBotApi {
         System.out.println("Response from Feishu Bot: " + response);
     }
 
+    /**
+     * 构造飞书交互式卡片。
+     */
     private Map<String, Object> buildCard(String title, String body, boolean highlightTitle) {
         Map<String, Object> card = new HashMap<>();
 

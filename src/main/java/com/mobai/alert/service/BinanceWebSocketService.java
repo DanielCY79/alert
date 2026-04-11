@@ -36,6 +36,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+/**
+ * Binance WebSocket 行情服务，负责订阅 K 线流、缓存已收盘 K 线并维护重连。
+ */
 @Service
 public class BinanceWebSocketService {
 
@@ -75,6 +78,9 @@ public class BinanceWebSocketService {
         this.alertSymbolCacheService = alertSymbolCacheService;
     }
 
+    /**
+     * 应用启动后初始化 WebSocket 订阅。
+     */
     @EventListener(ApplicationReadyEvent.class)
     public void initialize() {
         if (!isEnabled()) {
@@ -91,10 +97,16 @@ public class BinanceWebSocketService {
         }
     }
 
+    /**
+     * 判断当前模式下是否启用 WebSocket。
+     */
     public boolean isEnabled() {
         return !"rest".equals(normalizeMode());
     }
 
+    /**
+     * 根据最新交易对列表刷新订阅。
+     */
     public void refreshSubscriptions(List<BinanceSymbolsDetailDTO> symbols) {
         if (!isEnabled()) {
             return;
@@ -107,6 +119,9 @@ public class BinanceWebSocketService {
         reconnectNow("symbol list refreshed");
     }
 
+    /**
+     * 读取最近缓存的已收盘 K 线。
+     */
     public List<BinanceKlineDTO> getRecentClosedKlines(String symbol, int limit) {
         if (symbol == null || symbol.isBlank() || limit <= 0) {
             return Collections.emptyList();
@@ -123,6 +138,9 @@ public class BinanceWebSocketService {
         return result;
     }
 
+    /**
+     * 将 REST 快照合并到 WebSocket 缓存中。
+     */
     public void mergeRestSnapshot(String symbol, List<BinanceKlineDTO> klines) {
         if (!isEnabled() || symbol == null || CollectionUtils.isEmpty(klines)) {
             return;
@@ -134,6 +152,9 @@ public class BinanceWebSocketService {
         }
     }
 
+    /**
+     * 定期检查连接健康状态，必要时触发重连。
+     */
     @Scheduled(fixedDelayString = "${market.ws.health-check-ms:30000}")
     public void healthCheck() {
         if (!isEnabled() || desiredSymbols.isEmpty()) {
@@ -147,6 +168,9 @@ public class BinanceWebSocketService {
         }
     }
 
+    /**
+     * 应用退出时关闭所有连接和后台线程。
+     */
     @PreDestroy
     public void shutdown() {
         desiredSymbols = Collections.emptySet();
@@ -154,6 +178,9 @@ public class BinanceWebSocketService {
         reconnectExecutor.shutdownNow();
     }
 
+    /**
+     * 立即重建全部连接。
+     */
     private synchronized void reconnectNow(String reason) {
         closeConnections();
         if (desiredSymbols.isEmpty()) {
@@ -171,6 +198,9 @@ public class BinanceWebSocketService {
         System.out.println("WebSocket subscriptions refreshed, reason=" + reason + ", symbols=" + symbols.size() + ", sockets=" + socketConnections.size());
     }
 
+    /**
+     * 为一批交易对建立一个 WebSocket 连接。
+     */
     private void openSocket(List<String> symbols) {
         String joinedStreams = symbols.stream()
                 .map(symbol -> symbol.toLowerCase(Locale.ROOT) + "@kline_" + interval)
@@ -182,6 +212,9 @@ public class BinanceWebSocketService {
         socketConnections.add(connection);
     }
 
+    /**
+     * 关闭当前所有 WebSocket 连接。
+     */
     private void closeConnections() {
         for (SocketConnection connection : socketConnections) {
             connection.setManualClose(true);
@@ -197,6 +230,9 @@ public class BinanceWebSocketService {
         socketConnections.clear();
     }
 
+    /**
+     * 延迟调度重连，避免短时间内重复重连。
+     */
     private void scheduleReconnect(String reason) {
         if (!isEnabled() || desiredSymbols.isEmpty()) {
             return;
@@ -215,6 +251,9 @@ public class BinanceWebSocketService {
         }
     }
 
+    /**
+     * 处理收到的 WebSocket 文本消息，只缓存已收盘 K 线。
+     */
     private void handleMessage(String text) {
         JSONObject payload = JSON.parseObject(text);
         JSONObject data = payload.getJSONObject("data");
@@ -246,6 +285,9 @@ public class BinanceWebSocketService {
         storeClosedKline(klineDTO);
     }
 
+    /**
+     * 将已收盘 K 线写入缓存，并按配置裁剪容量。
+     */
     private void storeClosedKline(BinanceKlineDTO kline) {
         if (kline == null || kline.getSymbol() == null || kline.getEndTime() == null) {
             return;
@@ -267,6 +309,9 @@ public class BinanceWebSocketService {
         lastMessageAt.set(System.currentTimeMillis());
     }
 
+    /**
+     * 从交易对列表中提取可订阅的 USDT 交易对。
+     */
     private Set<String> extractSymbols(List<BinanceSymbolsDetailDTO> symbols) {
         if (CollectionUtils.isEmpty(symbols)) {
             return Collections.emptySet();
@@ -279,6 +324,9 @@ public class BinanceWebSocketService {
                 .collect(Collectors.toCollection(TreeSet::new));
     }
 
+    /**
+     * 统一规范化行情模式配置。
+     */
     private String normalizeMode() {
         if (marketDataMode == null || marketDataMode.isBlank()) {
             return "hybrid";
@@ -286,6 +334,9 @@ public class BinanceWebSocketService {
         return marketDataMode.trim().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * WebSocket 消息监听器。
+     */
     private final class BinanceKlineListener extends WebSocketListener {
 
         private final SocketConnection connection;
@@ -340,6 +391,9 @@ public class BinanceWebSocketService {
         }
     }
 
+    /**
+     * 单条 WebSocket 连接的运行状态。
+     */
     private static final class SocketConnection {
 
         private final String url;

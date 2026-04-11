@@ -26,6 +26,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 告警通知服务，负责冷却控制、标题高亮去重和飞书消息发送。
+ */
 @Service
 public class AlertNotificationService {
 
@@ -41,11 +44,19 @@ public class AlertNotificationService {
         this.feishuBotApi = feishuBotApi;
     }
 
+    /**
+     * 应用启动时加载当天的高亮记录，避免重启后重复高亮。
+     */
     @PostConstruct
     public void initHighlightRecords() {
         loadHighlightRecords();
     }
 
+    /**
+     * 发送告警通知。
+     *
+     * @param signal 告警信号
+     */
     public void send(AlertSignal signal) {
         String recordKey = buildRecordKey(signal);
         if (!allowSend(recordKey)) {
@@ -55,6 +66,9 @@ public class AlertNotificationService {
         feishuBotApi.sendGroupMessage(buildTitle(signal), buildBody(signal), shouldHighlightTitle(recordKey));
     }
 
+    /**
+     * 定时清理过期冷却记录和历史高亮记录。
+     */
     @Scheduled(fixedDelay = 5 * 60 * 1000L)
     public synchronized void cleanupExpiredRecords() {
         long currentTime = System.currentTimeMillis();
@@ -64,10 +78,16 @@ public class AlertNotificationService {
         persistHighlightRecords();
     }
 
+    /**
+     * 构造同一类告警的唯一键。
+     */
     private String buildRecordKey(AlertSignal signal) {
         return signal.getKline().getSymbol() + signal.getType();
     }
 
+    /**
+     * 判断当前告警是否允许发送，命中冷却时间则拒绝。
+     */
     private synchronized boolean allowSend(String recordKey) {
         long currentTime = System.currentTimeMillis();
         Long lastSentTime = sentRecords.get(recordKey);
@@ -78,6 +98,9 @@ public class AlertNotificationService {
         return false;
     }
 
+    /**
+     * 同一交易对同一类型的告警每天仅第一次使用高亮标题。
+     */
     private synchronized boolean shouldHighlightTitle(String recordKey) {
         String today = LocalDate.now().toString();
         String lastHighlightedDate = highlightRecords.get(recordKey);
@@ -89,6 +112,9 @@ public class AlertNotificationService {
         return false;
     }
 
+    /**
+     * 从本地文件恢复高亮记录。
+     */
     private void loadHighlightRecords() {
         if (!Files.exists(highlightRecordFilePath)) {
             return;
@@ -119,6 +145,9 @@ public class AlertNotificationService {
         }
     }
 
+    /**
+     * 判断高亮记录是否已跨天过期。
+     */
     private boolean isExpiredHighlightRecord(String highlightedDate, LocalDate today) {
         if (!StringUtils.hasText(highlightedDate)) {
             return true;
@@ -130,6 +159,9 @@ public class AlertNotificationService {
         }
     }
 
+    /**
+     * 持久化当天高亮记录，保证重启后行为一致。
+     */
     private synchronized void persistHighlightRecords() {
         try {
             Files.writeString(
@@ -144,10 +176,16 @@ public class AlertNotificationService {
         }
     }
 
+    /**
+     * 构造通知标题。
+     */
     private String buildTitle(AlertSignal signal) {
-        return signal.getTitle() + "\uff1a" + signal.getKline().getSymbol();
+        return signal.getTitle() + "：" + signal.getKline().getSymbol();
     }
 
+    /**
+     * 构造通知正文。
+     */
     private String buildBody(AlertSignal signal) {
         BinanceKlineDTO kline = signal.getKline();
         BigDecimal closePrice = new BigDecimal(kline.getClose()).setScale(4, RoundingMode.HALF_DOWN);
@@ -156,20 +194,26 @@ public class AlertNotificationService {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime klineTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(kline.getEndTime()), ZoneId.systemDefault());
 
-        return "\u6536\u76d8\u4ef7\uff1a" + closePrice + " USDT\n"
-                + "\u632f\u5e45\uff1a" + amplitude + "%\n"
-                + "\u6210\u4ea4\u989d\uff1a" + volume + " \u4e07USDT\n"
-                + "\u5f53\u524d\u65f6\u95f4\uff1a" + MESSAGE_TIME_FORMATTER.format(now) + "\n"
-                + "K\u7ebf\u65f6\u95f4\uff1a" + MESSAGE_TIME_FORMATTER.format(klineTime) + "\n"
-                + "[\u5b9e\u65f6K\u7ebf\u56fe](https://www.binance.com/en/futures/" + kline.getSymbol() + "?type=spot&layout=pro&interval=1m)";
+        return "收盘价：" + closePrice + " USDT\n"
+                + "振幅：" + amplitude + "%\n"
+                + "成交额：" + volume + " 万USDT\n"
+                + "当前时间：" + MESSAGE_TIME_FORMATTER.format(now) + "\n"
+                + "K线时间：" + MESSAGE_TIME_FORMATTER.format(klineTime) + "\n"
+                + "[实时K线图](https://www.binance.com/en/futures/" + kline.getSymbol() + "?type=spot&layout=pro&interval=1m)";
     }
 
+    /**
+     * 计算 K 线振幅，返回小数值。
+     */
     private BigDecimal calculateAmplitude(BinanceKlineDTO kline) {
         BigDecimal high = new BigDecimal(kline.getHigh());
         BigDecimal low = new BigDecimal(kline.getLow());
         return high.subtract(low).abs().divide(low, 6, RoundingMode.HALF_UP);
     }
 
+    /**
+     * 将成交额转换为“万”。
+     */
     private BigDecimal convertToWan(BigDecimal amount) {
         return amount.divide(new BigDecimal("10000"), 2, RoundingMode.HALF_UP);
     }
