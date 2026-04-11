@@ -77,6 +77,29 @@ class FeishuBotApiTest {
         assertEquals("grey", header.get("template"));
     }
 
+    /**
+     * 鏈轰細鎵弿鍗＄墖搴斾娇鐢ㄧ豢鑹叉爣棰樻ā鏉裤€?
+     */
+    @Test
+    void shouldSetBlueHeaderTemplateForOpportunityMessage() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        FeishuBotApi api = new FeishuBotApi(restTemplate);
+        ReflectionTestUtils.setField(api, "webhookUrl", "http://localhost/test");
+        when(restTemplate.postForObject(eq("http://localhost/test"), any(HttpEntity.class), eq(String.class)))
+                .thenReturn("{\"code\":0}");
+
+        api.sendGroupMessage("Bit浪浪拟合机会", "策略特征：突破", FeishuCardTemplate.BLUE);
+
+        ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).postForObject(eq("http://localhost/test"), requestCaptor.capture(), eq(String.class));
+
+        Map<String, Object> payload = castMap(requestCaptor.getValue().getBody());
+        Map<String, Object> card = castMap(payload.get("card"));
+        Map<String, Object> header = castMap(card.get("header"));
+
+        assertEquals("blue", header.get("template"));
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;

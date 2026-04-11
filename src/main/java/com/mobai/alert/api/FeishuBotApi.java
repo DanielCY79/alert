@@ -35,9 +35,20 @@ public class FeishuBotApi {
      * @param highlightTitle 是否高亮标题
      */
     public void sendGroupMessage(String title, String body, boolean highlightTitle) {
+        sendGroupMessage(title, body, highlightTitle ? FeishuCardTemplate.YELLOW : FeishuCardTemplate.GREY);
+    }
+
+    /**
+     * 鍙戦€侀涔︾兢娑堟伅銆?
+     *
+     * @param title 鏍囬
+     * @param body 姝ｆ枃
+     * @param template card header template
+     */
+    public void sendGroupMessage(String title, String body, FeishuCardTemplate template) {
         Map<String, Object> message = new HashMap<>();
         message.put("msg_type", "interactive");
-        message.put("card", buildCard(title, body, highlightTitle));
+        message.put("card", buildCard(title, body, template));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -50,7 +61,7 @@ public class FeishuBotApi {
     /**
      * 构造飞书交互式卡片。
      */
-    private Map<String, Object> buildCard(String title, String body, boolean highlightTitle) {
+    private Map<String, Object> buildCard(String title, String body, FeishuCardTemplate template) {
         Map<String, Object> card = new HashMap<>();
 
         Map<String, Object> config = new HashMap<>();
@@ -62,11 +73,7 @@ public class FeishuBotApi {
         headerTitle.put("tag", "plain_text");
         headerTitle.put("content", title);
         header.put("title", headerTitle);
-        if (highlightTitle) {
-            header.put("template", "yellow");
-        } else {
-            header.put("template", "grey");
-        }
+        header.put("template", template.getTemplateCode());
         card.put("header", header);
 
         List<Map<String, Object>> elements = new ArrayList<>();

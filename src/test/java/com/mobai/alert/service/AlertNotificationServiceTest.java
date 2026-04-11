@@ -41,14 +41,14 @@ class AlertNotificationServiceTest {
      * 冷却期内重复发送应被直接拦截。
      */
     @Test
-    void shouldKeepCooldownEvenWhenTodayHasNoGreyMessageYet() {
+    void shouldSuppressDifferentTypeForSameSymbolWithinTwentyFourHours() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
 
         service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
-        service.send(signal("BTCUSDT", "1"));
+        service.send(signal("BTCUSDT", "4"));
 
         verifyNoInteractions(feishuBotApi);
     }
@@ -57,21 +57,16 @@ class AlertNotificationServiceTest {
      * 同一天内冷却结束后再次通知，应切换为灰色标题。
      */
     @Test
-    void shouldUseGreyAfterCooldownWhenItIsStillTheSameDay() {
+    void shouldStillSendForDifferentSymbolsWithinTwentyFourHours() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
-        AlertSignal signal = signal("BTCUSDT", "1");
-        String recordKey = "BTCUSDT1";
 
-        service.send(signal);
+        service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
-        Map<String, Long> sentRecords = getLongRecordMap(service, "sentRecords");
-        sentRecords.put(recordKey, System.currentTimeMillis() - (2 * 60 * 60 * 1000L) - 1);
+        service.send(signal("ETHUSDT", "4"));
 
-        service.send(signal);
-
-        verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(false));
+        verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
 
     /**
@@ -81,18 +76,19 @@ class AlertNotificationServiceTest {
     void shouldHighlightAgainOnNextNaturalDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
-        AlertSignal signal = signal("BTCUSDT", "1");
-        String recordKey = "BTCUSDT1";
+        AlertSignal firstSignal = signal("BTCUSDT", "1");
+        AlertSignal secondSignal = signal("BTCUSDT", "4");
+        String recordKey = "BTCUSDT";
 
-        service.send(signal);
+        service.send(firstSignal);
         reset(feishuBotApi);
 
         Map<String, Long> sentRecords = getLongRecordMap(service, "sentRecords");
         Map<String, String> highlightRecords = getStringRecordMap(service, "highlightRecords");
-        sentRecords.put(recordKey, System.currentTimeMillis() - (2 * 60 * 60 * 1000L) - 1);
+        sentRecords.put(recordKey, System.currentTimeMillis() - (24 * 60 * 60 * 1000L) - 1);
         highlightRecords.put(recordKey, LocalDate.now().minusDays(1).toString());
 
-        service.send(signal);
+        service.send(secondSignal);
 
         verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
@@ -104,8 +100,8 @@ class AlertNotificationServiceTest {
     void shouldLoadTodayHighlightRecordFromLocalFile() throws IOException {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = new AlertNotificationService(feishuBotApi);
-        AlertSignal signal = signal("BTCUSDT", "1");
-        String recordKey = "BTCUSDT1";
+        AlertSignal signal = signal("BTCUSDT", "4");
+        String recordKey = "BTCUSDT";
         Path tempFile = Files.createTempFile("feishu-highlight-records", ".json");
 
         try {
@@ -118,7 +114,7 @@ class AlertNotificationServiceTest {
             service.initHighlightRecords();
 
             Map<String, Long> sentRecords = getLongRecordMap(service, "sentRecords");
-            sentRecords.put(recordKey, System.currentTimeMillis() - (2 * 60 * 60 * 1000L) - 1);
+            sentRecords.put(recordKey, System.currentTimeMillis() - (24 * 60 * 60 * 1000L) - 1);
 
             service.send(signal);
 

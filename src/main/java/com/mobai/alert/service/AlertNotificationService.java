@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AlertNotificationService {
 
-    private static final long COOLDOWN_PERIOD = 2 * 60 * 60 * 1000L;
+    private static final long COOLDOWN_PERIOD = 24 * 60 * 60 * 1000L;
     private static final DateTimeFormatter MESSAGE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
 
     private final FeishuBotApi feishuBotApi;
@@ -82,7 +82,7 @@ public class AlertNotificationService {
      * 构造同一类告警的唯一键。
      */
     private String buildRecordKey(AlertSignal signal) {
-        return signal.getKline().getSymbol() + signal.getType();
+        return signal.getKline().getSymbol();
     }
 
     /**
