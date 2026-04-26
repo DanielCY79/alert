@@ -17,6 +17,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -34,10 +35,24 @@ class AlertNotificationServiceTest {
     }
 
     @Test
-    void shouldSuppressSameLegacySymbolWithinSameNaturalDay() {
+    void shouldAllowThreeNotificationsForSameSymbolWithinSameNaturalDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
 
+        service.send(signal("BTCUSDT", "1"));
+        service.send(signal("BTCUSDT", "1"));
+        service.send(signal("BTCUSDT", "1"));
+
+        verify(feishuBotApi, times(3)).sendGroupMessage(anyString(), anyString(), eq(true));
+    }
+
+    @Test
+    void shouldSuppressFourthNotificationForSameSymbolWithinSameNaturalDay() {
+        FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
+        AlertNotificationService service = newService(feishuBotApi);
+
+        service.send(signal("BTCUSDT", "1"));
+        service.send(signal("BTCUSDT", "1"));
         service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
@@ -52,6 +67,8 @@ class AlertNotificationServiceTest {
         AlertNotificationService service = newService(feishuBotApi);
 
         service.send(signal("BTCUSDT", "1"));
+        service.send(signal("BTCUSDT", "1"));
+        service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
         service.send(signal("ETHUSDT", "1"));
@@ -63,17 +80,13 @@ class AlertNotificationServiceTest {
     void shouldHighlightAgainOnNextNaturalDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
-        AlertSignal firstSignal = signal("BTCUSDT", "1");
-        AlertSignal secondSignal = signal("BTCUSDT", "1");
-        String recordKey = AlertCooldownCategory.LEGACY.getCode() + ":BTCUSDT";
-
-        service.send(firstSignal);
-        reset(feishuBotApi);
+        AlertSignal signal = signal("BTCUSDT", "1");
+        String recordKey = "BTCUSDT";
 
         Map<String, String> sentRecords = getStringRecordMap(service, "sentRecords");
-        sentRecords.put(recordKey, AppTime.today().minusDays(1).toString());
+        sentRecords.put(recordKey, AppTime.today().minusDays(1) + ":3");
 
-        service.send(secondSignal);
+        service.send(signal);
 
         verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
@@ -83,13 +96,13 @@ class AlertNotificationServiceTest {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
         AlertSignal signal = signal("BTCUSDT", "1");
-        String recordKey = AlertCooldownCategory.LEGACY.getCode() + ":BTCUSDT";
+        String recordKey = "BTCUSDT";
         Path tempFile = Files.createTempFile("feishu-highlight-records", ".json");
 
         try {
             Files.writeString(
                     tempFile,
-                    "{\"" + recordKey + "\":\"" + AppTime.today() + "\"}",
+                    "{\"" + recordKey + "\":\"" + AppTime.today() + ":3\"}",
                     StandardCharsets.UTF_8
             );
             ReflectionTestUtils.setField(service, "sentRecordFilePath", tempFile);
@@ -104,23 +117,44 @@ class AlertNotificationServiceTest {
     }
 
     @Test
-    void shouldKeepLegacyAndType2CooldownIndependent() {
+    void shouldCountTypeOneAndTypeTwoTogetherForSameSymbol() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
 
         service.send(signal("BTCUSDT", "1"));
+        service.send(type2Signal("BTCUSDT"));
+        service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
-        service.send(new AlertSignal(
-                "Low Volume MA20",
-                kline("BTCUSDT"),
-                "2",
-                AlertCooldownCategory.LOW_VOLUME_MA20,
-                "1m振幅：12%",
-                FeishuCardTemplate.YELLOW
-        ));
+        service.send(type2Signal("BTCUSDT"));
 
-        verify(feishuBotApi).sendGroupMessage(anyString(), contains("1m振幅"), eq(FeishuCardTemplate.YELLOW));
+        verifyNoInteractions(feishuBotApi);
+    }
+
+    @Test
+    void shouldMigrateLegacyCategoryRecordsToSymbolCount() throws IOException {
+        FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
+        AlertNotificationService service = newService(feishuBotApi);
+        Path tempFile = Files.createTempFile("feishu-highlight-records", ".json");
+
+        try {
+            Files.writeString(
+                    tempFile,
+                    "{\"legacy:BTCUSDT\":\"" + AppTime.today() + "\","
+                            + "\"low_volume_ma20:BTCUSDT\":\"" + AppTime.today() + "\"}",
+                    StandardCharsets.UTF_8
+            );
+            ReflectionTestUtils.setField(service, "sentRecordFilePath", tempFile);
+            service.initSentRecords();
+
+            service.send(signal("BTCUSDT", "1"));
+            reset(feishuBotApi);
+            service.send(signal("BTCUSDT", "1"));
+
+            verifyNoInteractions(feishuBotApi);
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
     }
 
     @Test
@@ -143,6 +177,17 @@ class AlertNotificationServiceTest {
 
     private AlertSignal signal(String symbol, String type) {
         return new AlertSignal("Legacy Alert", kline(symbol), type);
+    }
+
+    private AlertSignal type2Signal(String symbol) {
+        return new AlertSignal(
+                "Low Volume MA20",
+                kline(symbol),
+                "2",
+                AlertCooldownCategory.LOW_VOLUME_MA20,
+                "1m振幅：12%",
+                FeishuCardTemplate.YELLOW
+        );
     }
 
     private AlertNotificationService newService(FeishuBotApi feishuBotApi) {

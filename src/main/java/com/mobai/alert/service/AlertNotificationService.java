@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AlertNotificationService {
 
+    private static final int MAX_DAILY_SEND_COUNT_PER_SYMBOL = 3;
     private static final DateTimeFormatter MESSAGE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
 
     private final FeishuBotApi feishuBotApi;
@@ -59,7 +60,7 @@ public class AlertNotificationService {
     public void send(AlertSignal signal) {
         String recordKey = buildRecordKey(signal);
         if (!allowSend(recordKey)) {
-            System.out.println("[SKIP] " + recordKey + " is still in cooldown.");
+            System.out.println("[SKIP] " + recordKey + " has reached today's alert limit.");
             return;
         }
 
@@ -82,22 +83,23 @@ public class AlertNotificationService {
     }
 
     /**
-     * 构造同一类告警的唯一键。
+     * 构造同一交易对的唯一键。
      */
     private String buildRecordKey(AlertSignal signal) {
-        return signal.getCooldownCategory().getCode() + ":" + signal.getKline().getSymbol();
+        return signal.getKline().getSymbol();
     }
 
     /**
-     * 判断当前告警是否允许发送，同一冷却维度在同一自然日仅发送一次。
+     * 判断当前告警是否允许发送，同一交易对在同一自然日最多发送 3 次。
      */
     private synchronized boolean allowSend(String recordKey) {
-        String today = AppTime.today().toString();
-        String lastSentDate = sentRecords.get(recordKey);
-        if (today.equals(lastSentDate)) {
+        LocalDate today = AppTime.today();
+        SentRecord sentRecord = parseSentRecord(sentRecords.get(recordKey));
+        int sentCount = sentRecord != null && today.equals(sentRecord.date) ? sentRecord.count : 0;
+        if (sentCount >= MAX_DAILY_SEND_COUNT_PER_SYMBOL) {
             return false;
         }
-        sentRecords.put(recordKey, today);
+        sentRecords.put(recordKey, formatSentRecord(today, sentCount + 1));
         persistSentRecords();
         return true;
     }
@@ -116,16 +118,23 @@ public class AlertNotificationService {
                 return;
             }
 
-            Map<String, String> persistedRecords = JSON.parseObject(content, Map.class);
+            Map<String, Object> persistedRecords = JSON.parseObject(content, Map.class);
             if (persistedRecords == null) {
                 return;
             }
 
             LocalDate today = AppTime.today();
             sentRecords.clear();
-            for (Map.Entry<String, String> entry : persistedRecords.entrySet()) {
-                if (!isExpiredSentRecord(entry.getValue(), today)) {
-                    sentRecords.put(entry.getKey(), entry.getValue());
+            for (Map.Entry<String, Object> entry : persistedRecords.entrySet()) {
+                String recordKey = normalizeRecordKey(entry.getKey());
+                SentRecord sentRecord = parseSentRecord(String.valueOf(entry.getValue()));
+                if (recordKey != null && sentRecord != null && today.equals(sentRecord.date)) {
+                    SentRecord existingRecord = parseSentRecord(sentRecords.get(recordKey));
+                    int count = sentRecord.count;
+                    if (existingRecord != null && today.equals(existingRecord.date)) {
+                        count += existingRecord.count;
+                    }
+                    sentRecords.put(recordKey, formatSentRecord(today, Math.min(count, MAX_DAILY_SEND_COUNT_PER_SYMBOL)));
                 }
             }
         } catch (IOException e) {
@@ -139,14 +148,37 @@ public class AlertNotificationService {
      * 判断发送记录是否已跨天过期。
      */
     private boolean isExpiredSentRecord(String sentDate, LocalDate today) {
-        if (!StringUtils.hasText(sentDate)) {
-            return true;
+        SentRecord sentRecord = parseSentRecord(sentDate);
+        return sentRecord == null || sentRecord.date.isBefore(today);
+    }
+
+    private String normalizeRecordKey(String recordKey) {
+        if (!StringUtils.hasText(recordKey)) {
+            return null;
+        }
+        int separatorIndex = recordKey.lastIndexOf(':');
+        if (separatorIndex < 0 || separatorIndex == recordKey.length() - 1) {
+            return recordKey;
+        }
+        return recordKey.substring(separatorIndex + 1);
+    }
+
+    private SentRecord parseSentRecord(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
         }
         try {
-            return LocalDate.parse(sentDate).isBefore(today);
+            String[] parts = value.split(":", 2);
+            LocalDate date = LocalDate.parse(parts[0]);
+            int count = parts.length > 1 ? Integer.parseInt(parts[1]) : 1;
+            return new SentRecord(date, Math.max(1, count));
         } catch (Exception e) {
-            return true;
+            return null;
         }
+    }
+
+    private String formatSentRecord(LocalDate date, int count) {
+        return date + ":" + count;
     }
 
     /**
@@ -210,5 +242,16 @@ public class AlertNotificationService {
      */
     private BigDecimal convertToWan(BigDecimal amount) {
         return amount.divide(new BigDecimal("10000"), 2, RoundingMode.HALF_UP);
+    }
+
+    private static class SentRecord {
+
+        private final LocalDate date;
+        private final int count;
+
+        private SentRecord(LocalDate date, int count) {
+            this.date = date;
+            this.count = count;
+        }
     }
 }
