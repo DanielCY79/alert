@@ -40,10 +40,39 @@ class AlertNotificationServiceTest {
         AlertNotificationService service = newService(feishuBotApi);
 
         service.send(signal("BTCUSDT", "1"));
+        setSentRecord(service, "BTCUSDT", 1, moreThanOneHourAgo());
         service.send(signal("BTCUSDT", "1"));
+        setSentRecord(service, "BTCUSDT", 2, moreThanOneHourAgo());
         service.send(signal("BTCUSDT", "1"));
 
         verify(feishuBotApi, times(3)).sendGroupMessage(anyString(), anyString(), eq(true));
+    }
+
+    @Test
+    void shouldSuppressSecondNotificationWithinOneHourForSameSymbol() {
+        FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
+        AlertNotificationService service = newService(feishuBotApi);
+
+        service.send(signal("BTCUSDT", "1"));
+        reset(feishuBotApi);
+
+        service.send(signal("BTCUSDT", "1"));
+
+        verifyNoInteractions(feishuBotApi);
+    }
+
+    @Test
+    void shouldAllowNotificationAfterOneHourWhenDailyLimitNotReached() {
+        FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
+        AlertNotificationService service = newService(feishuBotApi);
+
+        service.send(signal("BTCUSDT", "1"));
+        setSentRecord(service, "BTCUSDT", 1, moreThanOneHourAgo());
+        reset(feishuBotApi);
+
+        service.send(signal("BTCUSDT", "1"));
+
+        verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
 
     @Test
@@ -52,7 +81,9 @@ class AlertNotificationServiceTest {
         AlertNotificationService service = newService(feishuBotApi);
 
         service.send(signal("BTCUSDT", "1"));
+        setSentRecord(service, "BTCUSDT", 1, moreThanOneHourAgo());
         service.send(signal("BTCUSDT", "1"));
+        setSentRecord(service, "BTCUSDT", 2, moreThanOneHourAgo());
         service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
@@ -66,8 +97,6 @@ class AlertNotificationServiceTest {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
 
-        service.send(signal("BTCUSDT", "1"));
-        service.send(signal("BTCUSDT", "1"));
         service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
@@ -122,7 +151,9 @@ class AlertNotificationServiceTest {
         AlertNotificationService service = newService(feishuBotApi);
 
         service.send(signal("BTCUSDT", "1"));
+        setSentRecord(service, "BTCUSDT", 1, moreThanOneHourAgo());
         service.send(type2Signal("BTCUSDT"));
+        setSentRecord(service, "BTCUSDT", 2, moreThanOneHourAgo());
         service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
@@ -173,6 +204,14 @@ class AlertNotificationServiceTest {
     @SuppressWarnings("unchecked")
     private Map<String, String> getStringRecordMap(AlertNotificationService service, String fieldName) {
         return (Map<String, String>) ReflectionTestUtils.getField(service, fieldName);
+    }
+
+    private void setSentRecord(AlertNotificationService service, String symbol, int count, long lastSentMillis) {
+        getStringRecordMap(service, "sentRecords").put(symbol, AppTime.today() + ":" + count + ":" + lastSentMillis);
+    }
+
+    private long moreThanOneHourAgo() {
+        return System.currentTimeMillis() - 60 * 60 * 1000L - 1L;
     }
 
     private AlertSignal signal(String symbol, String type) {

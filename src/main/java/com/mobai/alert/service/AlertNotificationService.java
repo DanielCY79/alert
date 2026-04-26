@@ -31,6 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AlertNotificationService {
 
     private static final int MAX_DAILY_SEND_COUNT_PER_SYMBOL = 3;
+    private static final long HOURLY_COOLDOWN_MILLIS_PER_SYMBOL = 60 * 60 * 1000L;
     private static final DateTimeFormatter MESSAGE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
 
     private final FeishuBotApi feishuBotApi;
@@ -60,7 +61,7 @@ public class AlertNotificationService {
     public void send(AlertSignal signal) {
         String recordKey = buildRecordKey(signal);
         if (!allowSend(recordKey)) {
-            System.out.println("[SKIP] " + recordKey + " has reached today's alert limit.");
+            System.out.println("[SKIP] " + recordKey + " has reached alert rate limit.");
             return;
         }
 
@@ -90,16 +91,23 @@ public class AlertNotificationService {
     }
 
     /**
-     * 判断当前告警是否允许发送，同一交易对在同一自然日最多发送 3 次。
+     * 判断当前告警是否允许发送，同一交易对 1 小时最多 1 次，且同一自然日最多 3 次。
      */
     private synchronized boolean allowSend(String recordKey) {
         LocalDate today = AppTime.today();
+        long now = System.currentTimeMillis();
         SentRecord sentRecord = parseSentRecord(sentRecords.get(recordKey));
         int sentCount = sentRecord != null && today.equals(sentRecord.date) ? sentRecord.count : 0;
         if (sentCount >= MAX_DAILY_SEND_COUNT_PER_SYMBOL) {
             return false;
         }
-        sentRecords.put(recordKey, formatSentRecord(today, sentCount + 1));
+        if (sentRecord != null
+                && today.equals(sentRecord.date)
+                && sentRecord.lastSentMillis != null
+                && now - sentRecord.lastSentMillis < HOURLY_COOLDOWN_MILLIS_PER_SYMBOL) {
+            return false;
+        }
+        sentRecords.put(recordKey, formatSentRecord(today, sentCount + 1, now));
         persistSentRecords();
         return true;
     }
@@ -134,7 +142,11 @@ public class AlertNotificationService {
                     if (existingRecord != null && today.equals(existingRecord.date)) {
                         count += existingRecord.count;
                     }
-                    sentRecords.put(recordKey, formatSentRecord(today, Math.min(count, MAX_DAILY_SEND_COUNT_PER_SYMBOL)));
+                    Long lastSentMillis = latestLastSentMillis(sentRecord, existingRecord);
+                    sentRecords.put(
+                            recordKey,
+                            formatSentRecord(today, Math.min(count, MAX_DAILY_SEND_COUNT_PER_SYMBOL), lastSentMillis)
+                    );
                 }
             }
         } catch (IOException e) {
@@ -168,17 +180,33 @@ public class AlertNotificationService {
             return null;
         }
         try {
-            String[] parts = value.split(":", 2);
+            String[] parts = value.split(":", 3);
             LocalDate date = LocalDate.parse(parts[0]);
             int count = parts.length > 1 ? Integer.parseInt(parts[1]) : 1;
-            return new SentRecord(date, Math.max(1, count));
+            Long lastSentMillis = parts.length > 2 ? Long.parseLong(parts[2]) : null;
+            return new SentRecord(date, Math.max(1, count), lastSentMillis);
         } catch (Exception e) {
             return null;
         }
     }
 
-    private String formatSentRecord(LocalDate date, int count) {
-        return date + ":" + count;
+    private Long latestLastSentMillis(SentRecord first, SentRecord second) {
+        Long firstMillis = first == null ? null : first.lastSentMillis;
+        Long secondMillis = second == null ? null : second.lastSentMillis;
+        if (firstMillis == null) {
+            return secondMillis;
+        }
+        if (secondMillis == null) {
+            return firstMillis;
+        }
+        return Math.max(firstMillis, secondMillis);
+    }
+
+    private String formatSentRecord(LocalDate date, int count, Long lastSentMillis) {
+        if (lastSentMillis == null) {
+            return date + ":" + count;
+        }
+        return date + ":" + count + ":" + lastSentMillis;
     }
 
     /**
@@ -248,10 +276,12 @@ public class AlertNotificationService {
 
         private final LocalDate date;
         private final int count;
+        private final Long lastSentMillis;
 
-        private SentRecord(LocalDate date, int count) {
+        private SentRecord(LocalDate date, int count, Long lastSentMillis) {
             this.date = date;
             this.count = count;
+            this.lastSentMillis = lastSentMillis;
         }
     }
 }
