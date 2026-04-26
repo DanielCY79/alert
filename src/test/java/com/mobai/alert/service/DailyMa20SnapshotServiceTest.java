@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -31,6 +30,7 @@ class DailyMa20SnapshotServiceTest {
         service.refreshSnapshot(List.of(symbol));
         assertNotNull(service.getSnapshot("SOLUSDT"));
         assertNotNull(service.getSnapshot("SOLUSDT").getMa20());
+        assertNotNull(service.getSnapshot("SOLUSDT").getAverageVolume5d());
         assertNotNull(service.getSnapshot("SOLUSDT").getAverageVolume7d());
 
         service.refreshSnapshot(List.of(symbol));
@@ -45,6 +45,7 @@ class DailyMa20SnapshotServiceTest {
         DailyMa20Snapshot snapshot = service.getSnapshot(symbol);
         DailyMa20Snapshot expiredSnapshot = new DailyMa20Snapshot(
                 snapshot.getMa20(),
+                snapshot.getAverageVolume5d(),
                 snapshot.getAverageVolume7d(),
                 System.currentTimeMillis() - 1L
         );

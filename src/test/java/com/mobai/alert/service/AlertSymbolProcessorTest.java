@@ -52,18 +52,53 @@ class AlertSymbolProcessorTest {
                 kline("SOLUSDT", 4L),
                 kline("SOLUSDT", 5L)
         );
+        BinanceKlineDTO latestClosedKline = closedKlines.get(closedKlines.size() - 1);
+        List<BinanceKlineDTO> recentThreeKlines = closedKlines.subList(2, 5);
+        DailyMa20Snapshot dailyMa20Snapshot = new DailyMa20Snapshot(
+                new BigDecimal("93"),
+                new BigDecimal("299999999"),
+                new BigDecimal("400000000"),
+                System.currentTimeMillis() + 60_000L
+        );
+        List<BinanceKlineDTO> fifteenMinuteKlines = maKlines("SOLUSDT", 20, "90");
+        List<BinanceKlineDTO> oneHourKlines = maKlines("SOLUSDT", 20, "91");
+        List<BinanceKlineDTO> fourHourKlines = maKlines("SOLUSDT", 20, "92");
+        TwoOfThreeMomentumSignalContext context = new TwoOfThreeMomentumSignalContext(
+                latestClosedKline,
+                new BigDecimal("112"),
+                new BigDecimal("299999999"),
+                new BigDecimal("93"),
+                new BigDecimal("92"),
+                new BigDecimal("91"),
+                new BigDecimal("90"),
+                2
+        );
 
         when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "1m", 5)).thenReturn(closedKlines);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(2))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(3))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(4))).thenReturn(false);
+        when(dailyMa20SnapshotService.getSnapshot("SOLUSDT")).thenReturn(dailyMa20Snapshot);
+        when(alertRuleEvaluator.shouldEvaluateTwoOfThreeMomentumSignal(
+                dailyMa20Snapshot,
+                latestClosedKline,
+                recentThreeKlines
+        )).thenReturn(true);
+        when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "15m", 20)).thenReturn(fifteenMinuteKlines);
+        when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "1h", 20)).thenReturn(oneHourKlines);
+        when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "4h", 20)).thenReturn(fourHourKlines);
+        when(alertRuleEvaluator.evaluateTwoOfThreeMomentumSignal(
+                dailyMa20Snapshot,
+                latestClosedKline,
+                recentThreeKlines,
+                fifteenMinuteKlines,
+                oneHourKlines,
+                fourHourKlines
+        )).thenReturn(context);
 
         processor.process(symbol);
 
         ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
         verify(alertNotificationService).send(signalCaptor.capture());
         assertEquals("1", signalCaptor.getValue().getType());
-        assertEquals("3根K线中2根拉升", signalCaptor.getValue().getTitle());
+        assertEquals("低均量MA20 3根K线中2根放量大振幅", signalCaptor.getValue().getTitle());
         assertSame(closedKlines.get(4), signalCaptor.getValue().getKline());
     }
 
@@ -78,8 +113,10 @@ class AlertSymbolProcessorTest {
                 kline("SOLUSDT", 5L)
         );
         BinanceKlineDTO latestClosedKline = closedKlines.get(closedKlines.size() - 1);
+        BinanceKlineDTO previousClosedKline = closedKlines.get(closedKlines.size() - 2);
         DailyMa20Snapshot dailyMa20Snapshot = new DailyMa20Snapshot(
                 new BigDecimal("93"),
+                new BigDecimal("299999999"),
                 new BigDecimal("400000000"),
                 System.currentTimeMillis() + 60_000L
         );
@@ -95,18 +132,24 @@ class AlertSymbolProcessorTest {
                 new BigDecimal("91"),
                 new BigDecimal("90"),
                 new BigDecimal("250000"),
+                new BigDecimal("40001"),
                 new BigDecimal("0.12")
         );
 
         when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "1m", 5)).thenReturn(closedKlines);
         when(dailyMa20SnapshotService.getSnapshot("SOLUSDT")).thenReturn(dailyMa20Snapshot);
-        when(alertRuleEvaluator.shouldEvaluateLowVolumeMa20Signal(dailyMa20Snapshot, latestClosedKline)).thenReturn(true);
+        when(alertRuleEvaluator.shouldEvaluateLowVolumeMa20Signal(
+                dailyMa20Snapshot,
+                latestClosedKline,
+                previousClosedKline
+        )).thenReturn(true);
         when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "15m", 20)).thenReturn(fifteenMinuteKlines);
         when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "1h", 20)).thenReturn(oneHourKlines);
         when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "4h", 20)).thenReturn(fourHourKlines);
         when(alertRuleEvaluator.evaluateLowVolumeMa20Signal(
                 dailyMa20Snapshot,
                 latestClosedKline,
+                previousClosedKline,
                 fifteenMinuteKlines,
                 oneHourKlines,
                 fourHourKlines
@@ -132,11 +175,15 @@ class AlertSymbolProcessorTest {
                 kline("SOLUSDT", 5L)
         );
         BinanceKlineDTO latestClosedKline = closedKlines.get(closedKlines.size() - 1);
+        BinanceKlineDTO previousClosedKline = closedKlines.get(closedKlines.size() - 2);
 
         when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "1m", 5)).thenReturn(closedKlines);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(2))).thenReturn(false);
         when(dailyMa20SnapshotService.getSnapshot("SOLUSDT")).thenReturn(null);
-        when(alertRuleEvaluator.shouldEvaluateLowVolumeMa20Signal(null, latestClosedKline)).thenReturn(false);
+        when(alertRuleEvaluator.shouldEvaluateLowVolumeMa20Signal(
+                null,
+                latestClosedKline,
+                previousClosedKline
+        )).thenReturn(false);
 
         processor.process(symbol);
 

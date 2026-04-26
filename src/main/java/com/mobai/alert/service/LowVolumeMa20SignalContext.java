@@ -17,6 +17,7 @@ public class LowVolumeMa20SignalContext {
     private final BigDecimal oneHourMa20;
     private final BigDecimal fifteenMinuteMa20;
     private final BigDecimal oneMinuteVolume;
+    private final BigDecimal previousOneMinuteVolume;
     private final BigDecimal oneMinuteAmplitude;
 
     public LowVolumeMa20SignalContext(BinanceKlineDTO latestOneMinuteKline,
@@ -27,6 +28,7 @@ public class LowVolumeMa20SignalContext {
                                       BigDecimal oneHourMa20,
                                       BigDecimal fifteenMinuteMa20,
                                       BigDecimal oneMinuteVolume,
+                                      BigDecimal previousOneMinuteVolume,
                                       BigDecimal oneMinuteAmplitude) {
         this.latestOneMinuteKline = latestOneMinuteKline;
         this.currentPrice = currentPrice;
@@ -36,6 +38,7 @@ public class LowVolumeMa20SignalContext {
         this.oneHourMa20 = oneHourMa20;
         this.fifteenMinuteMa20 = fifteenMinuteMa20;
         this.oneMinuteVolume = oneMinuteVolume;
+        this.previousOneMinuteVolume = previousOneMinuteVolume;
         this.oneMinuteAmplitude = oneMinuteAmplitude;
     }
 
@@ -69,6 +72,10 @@ public class LowVolumeMa20SignalContext {
 
     public BigDecimal getOneMinuteVolume() {
         return oneMinuteVolume;
+    }
+
+    public BigDecimal getPreviousOneMinuteVolume() {
+        return previousOneMinuteVolume;
     }
 
     public BigDecimal getOneMinuteAmplitude() {

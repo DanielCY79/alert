@@ -20,7 +20,8 @@ import java.util.concurrent.ConcurrentMap;
 public class DailyMa20SnapshotService {
 
     private static final int MA20_PERIOD = 20;
-    private static final int AVERAGE_VOLUME_PERIOD = 7;
+    private static final int AVERAGE_VOLUME_5D_PERIOD = 5;
+    private static final int AVERAGE_VOLUME_7D_PERIOD = 7;
     private static final long ONE_DAY_MILLIS = 24 * 60 * 60 * 1000L;
 
     private final BinanceMarketDataService binanceMarketDataService;
@@ -89,9 +90,10 @@ public class DailyMa20SnapshotService {
                 ? 0L
                 : latestDailyKline.getEndTime() + ONE_DAY_MILLIS + 1L;
 
-        BigDecimal averageVolume7d = calculateAverageVolume(dailyKlines, AVERAGE_VOLUME_PERIOD);
+        BigDecimal averageVolume5d = calculateAverageVolume(dailyKlines, AVERAGE_VOLUME_5D_PERIOD);
+        BigDecimal averageVolume7d = calculateAverageVolume(dailyKlines, AVERAGE_VOLUME_7D_PERIOD);
 
-        return new DailyMa20Snapshot(ma20, averageVolume7d, refreshAfterMillis);
+        return new DailyMa20Snapshot(ma20, averageVolume5d, averageVolume7d, refreshAfterMillis);
     }
 
     private BigDecimal calculateAverageVolume(List<BinanceKlineDTO> klines, int period) {
