@@ -13,8 +13,6 @@ import java.math.RoundingMode;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
-import java.util.function.Predicate;
 
 @Service
 public class AlertSymbolProcessor {
@@ -22,7 +20,7 @@ public class AlertSymbolProcessor {
     private static final int PRIMARY_SIGNAL_LOOKBACK = 5;
     private static final int MA20_SIGNAL_LOOKBACK = 20;
     private static final DateTimeFormatter MESSAGE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
-    private static final String TITLE_CONTINUOUS_THREE = "连续 3 根K线拉升";
+    private static final String TITLE_TWO_OF_THREE_MOMENTUM = "3根K线中2根拉升";
     private static final String TITLE_LOW_VOLUME_MA20 = "低均量多周期MA20放量";
     private static final String TYPE_LOW_VOLUME_MA20 = "2";
 
@@ -63,8 +61,8 @@ public class AlertSymbolProcessor {
                                    BinanceKlineDTO latestClosedKline) {
         List<BinanceKlineDTO> recentThreeClosedKlines = takeLast(closedKlines, 3);
         if (recentThreeClosedKlines.size() == 3
-                && allMatch(recentThreeClosedKlines, alertRuleEvaluator::isContinuousThreeMatch)) {
-            alertNotificationService.send(new AlertSignal(TITLE_CONTINUOUS_THREE, latestClosedKline, "1"));
+                && countMatches(recentThreeClosedKlines, alertRuleEvaluator::isContinuousThreeMatch) >= 2) {
+            alertNotificationService.send(new AlertSignal(TITLE_TWO_OF_THREE_MOMENTUM, latestClosedKline, "1"));
             return;
         }
 
@@ -103,14 +101,10 @@ public class AlertSymbolProcessor {
     }
 
     private boolean shouldSkip(BinanceSymbolsDetailDTO symbolDTO) {
-        String symbol = symbolDTO.getSymbol();
-        if (!StringUtils.hasText(symbol) || !symbol.contains("USDT")) {
+        if (!AlertSymbolFilter.isMonitorCandidate(symbolDTO)) {
             return true;
         }
-        if (isExcluded(symbol)) {
-            return true;
-        }
-        return !Objects.equals(symbolDTO.getStatus(), "TRADING");
+        return isExcluded(symbolDTO.getSymbol());
     }
 
     private boolean isExcluded(String symbol) {
@@ -154,16 +148,17 @@ public class AlertSymbolProcessor {
         return klines.subList(fromIndex, klines.size());
     }
 
-    private boolean allMatch(List<BinanceKlineDTO> klines, Predicate<BinanceKlineDTO> predicate) {
+    private int countMatches(List<BinanceKlineDTO> klines, java.util.function.Predicate<BinanceKlineDTO> predicate) {
         if (CollectionUtils.isEmpty(klines)) {
-            return false;
+            return 0;
         }
+        int count = 0;
         for (BinanceKlineDTO kline : klines) {
-            if (!predicate.test(kline)) {
-                return false;
+            if (predicate.test(kline)) {
+                count++;
             }
         }
-        return true;
+        return count;
     }
 
     private String formatPercent(BigDecimal value) {

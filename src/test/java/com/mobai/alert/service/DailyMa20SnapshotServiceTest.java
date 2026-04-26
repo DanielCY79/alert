@@ -20,25 +20,25 @@ class DailyMa20SnapshotServiceTest {
     void shouldReuseSnapshotBeforeRefreshTimeAndReloadAfterExpiry() {
         BinanceMarketDataService binanceMarketDataService = mock(BinanceMarketDataService.class);
         DailyMa20SnapshotService service = new DailyMa20SnapshotService(binanceMarketDataService);
-        BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
+        BinanceSymbolsDetailDTO symbol = tradingSymbol("SOLUSDT");
 
-        List<BinanceKlineDTO> firstDailyKlines = dailyKlines("BTCUSDT", System.currentTimeMillis());
-        List<BinanceKlineDTO> secondDailyKlines = dailyKlines("BTCUSDT", System.currentTimeMillis() + 24 * 60 * 60 * 1000L);
-        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1d", 20))
+        List<BinanceKlineDTO> firstDailyKlines = dailyKlines("SOLUSDT", System.currentTimeMillis());
+        List<BinanceKlineDTO> secondDailyKlines = dailyKlines("SOLUSDT", System.currentTimeMillis() + 24 * 60 * 60 * 1000L);
+        when(binanceMarketDataService.loadRecentClosedKlines("SOLUSDT", "1d", 20))
                 .thenReturn(firstDailyKlines)
                 .thenReturn(secondDailyKlines);
 
         service.refreshSnapshot(List.of(symbol));
-        assertNotNull(service.getSnapshot("BTCUSDT"));
-        assertNotNull(service.getSnapshot("BTCUSDT").getMa20());
-        assertNotNull(service.getSnapshot("BTCUSDT").getAverageVolume7d());
+        assertNotNull(service.getSnapshot("SOLUSDT"));
+        assertNotNull(service.getSnapshot("SOLUSDT").getMa20());
+        assertNotNull(service.getSnapshot("SOLUSDT").getAverageVolume7d());
 
         service.refreshSnapshot(List.of(symbol));
-        verify(binanceMarketDataService, times(1)).loadRecentClosedKlines("BTCUSDT", "1d", 20);
+        verify(binanceMarketDataService, times(1)).loadRecentClosedKlines("SOLUSDT", "1d", 20);
 
-        forceExpiry(service, "BTCUSDT");
+        forceExpiry(service, "SOLUSDT");
         service.refreshSnapshot(List.of(symbol));
-        verify(binanceMarketDataService, times(2)).loadRecentClosedKlines("BTCUSDT", "1d", 20);
+        verify(binanceMarketDataService, times(2)).loadRecentClosedKlines("SOLUSDT", "1d", 20);
     }
 
     private void forceExpiry(DailyMa20SnapshotService service, String symbol) {

@@ -56,9 +56,16 @@ public class AlertService {
             return;
         }
 
-        binanceMarketDataService.refreshSubscriptions(symbolsDTO.getSymbols());
-        dailyMa20SnapshotService.refreshSnapshot(symbolsDTO.getSymbols());
-        processSymbols(symbolsDTO.getSymbols(), 4);
+        List<BinanceSymbolsDetailDTO> monitorCandidates = symbolsDTO.getSymbols().stream()
+                .filter(AlertSymbolFilter::isMonitorCandidate)
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(monitorCandidates)) {
+            return;
+        }
+
+        binanceMarketDataService.refreshSubscriptions(monitorCandidates);
+        dailyMa20SnapshotService.refreshSnapshot(monitorCandidates);
+        processSymbols(monitorCandidates, 4);
         System.out.println("Monitoring finished " + LOG_TIME_FORMATTER.format(AppTime.now()));
     }
 

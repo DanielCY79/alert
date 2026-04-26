@@ -43,10 +43,7 @@ public class DailyMa20SnapshotService {
         long currentTime = System.currentTimeMillis();
         Set<String> activeSymbols = new HashSet<>();
         for (BinanceSymbolsDetailDTO symbol : symbols) {
-            if (symbol == null
-                    || symbol.getSymbol() == null
-                    || !symbol.getSymbol().contains("USDT")
-                    || !"TRADING".equals(symbol.getStatus())) {
+            if (!AlertSymbolFilter.isMonitorCandidate(symbol)) {
                 continue;
             }
             activeSymbols.add(symbol.getSymbol());
