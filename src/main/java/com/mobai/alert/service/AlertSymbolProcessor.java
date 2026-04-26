@@ -179,7 +179,7 @@ public class AlertSymbolProcessor {
                 + "1h MA20：" + formatDecimal(context.getOneHourMa20(), 4) + "\n"
                 + "15m MA20：" + formatDecimal(context.getFifteenMinuteMa20(), 4) + "\n"
                 + "近3根1m命中：" + context.getMatchedOneMinuteCount() + "/3"
-                + "（成交额>8万USDT，振幅>10%）\n"
+                + "（成交额>8万USDT，振幅1%-50%）\n"
                 + "1m时间：" + formatTime(context.getLatestOneMinuteKline().getEndTime()) + "\n"
                 + "[实时K线图](https://www.binance.com/en/futures/"
                 + symbol

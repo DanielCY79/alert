@@ -22,8 +22,11 @@ public class AlertRuleEvaluator {
     @Value("${monitoring.type1.one-minute-volume.min:80000}")
     private String type1OneMinuteVolumeMin = "80000";
 
-    @Value("${monitoring.type1.one-minute-amplitude.min:0.10}")
-    private String type1OneMinuteAmplitudeMin = "0.10";
+    @Value("${monitoring.type1.one-minute-amplitude.min:0.01}")
+    private String type1OneMinuteAmplitudeMin = "0.01";
+
+    @Value("${monitoring.type1.one-minute-amplitude.max:0.50}")
+    private String type1OneMinuteAmplitudeMax = "0.50";
 
     @Value("${monitoring.type2.average-volume-7d.max:500000000}")
     private String type2AverageVolume7dMax = "500000000";
@@ -34,8 +37,11 @@ public class AlertRuleEvaluator {
     @Value("${monitoring.type2.previous-one-minute-volume.min:40000}")
     private String type2PreviousOneMinuteVolumeMin = "40000";
 
-    @Value("${monitoring.type2.one-minute-amplitude.min:0.10}")
-    private String type2OneMinuteAmplitudeMin = "0.10";
+    @Value("${monitoring.type2.one-minute-amplitude.min:0.01}")
+    private String type2OneMinuteAmplitudeMin = "0.01";
+
+    @Value("${monitoring.type2.one-minute-amplitude.max:0.50}")
+    private String type2OneMinuteAmplitudeMax = "0.50";
 
     /**
      * 判断单根 1m K 线是否满足 type=1 的放量大振幅条件。
@@ -43,7 +49,11 @@ public class AlertRuleEvaluator {
     public boolean isTwoOfThreeMomentumKlineMatch(BinanceKlineDTO kline) {
         BigDecimal volume = new BigDecimal(kline.getVolume());
         return volume.compareTo(new BigDecimal(type1OneMinuteVolumeMin)) > 0
-                && calculateAmplitude(kline).compareTo(new BigDecimal(type1OneMinuteAmplitudeMin)) > 0;
+                && isAmplitudeInRange(
+                        calculateAmplitude(kline),
+                        type1OneMinuteAmplitudeMin,
+                        type1OneMinuteAmplitudeMax
+                );
     }
 
     /**
@@ -62,7 +72,7 @@ public class AlertRuleEvaluator {
      * Type 1 rule:
      * 5d average quote volume < 300M USDT, price above 1d/4h/1h/15m MA20,
      * and at least 2 of the latest 3 one-minute candles have quote volume > 80K USDT
-     * and amplitude > 10%.
+     * and amplitude in [1%, 50%].
      */
     public TwoOfThreeMomentumSignalContext evaluateTwoOfThreeMomentumSignal(
             DailyMa20Snapshot dailyMa20Snapshot,
@@ -122,7 +132,7 @@ public class AlertRuleEvaluator {
      * Type 2 independent rule:
      * 7d average quote volume < 500M USDT, price above 1d/4h/1h/15m MA20,
      * latest 1m quote volume > 200K USDT, previous 1m quote volume > 40K USDT,
-     * and latest 1m amplitude > 10%.
+     * and latest 1m amplitude in [1%, 50%].
      */
     public LowVolumeMa20SignalContext evaluateLowVolumeMa20Signal(DailyMa20Snapshot dailyMa20Snapshot,
                                                                    BinanceKlineDTO latestOneMinuteKline,
@@ -210,7 +220,11 @@ public class AlertRuleEvaluator {
             return false;
         }
 
-        return calculateAmplitude(latestOneMinuteKline).compareTo(new BigDecimal(type2OneMinuteAmplitudeMin)) > 0;
+        return isAmplitudeInRange(
+                calculateAmplitude(latestOneMinuteKline),
+                type2OneMinuteAmplitudeMin,
+                type2OneMinuteAmplitudeMax
+        );
     }
 
     private BigDecimal calculateCloseMa(List<BinanceKlineDTO> klines, int period) {
@@ -237,6 +251,11 @@ public class AlertRuleEvaluator {
         BigDecimal high = new BigDecimal(kline.getHigh());
         BigDecimal low = new BigDecimal(kline.getLow());
         return high.subtract(low).divide(low, 6, RoundingMode.HALF_UP);
+    }
+
+    private boolean isAmplitudeInRange(BigDecimal amplitude, String min, String max) {
+        return amplitude.compareTo(new BigDecimal(min)) >= 0
+                && amplitude.compareTo(new BigDecimal(max)) <= 0;
     }
 
     private int countMatches(List<BinanceKlineDTO> klines, java.util.function.Predicate<BinanceKlineDTO> predicate) {

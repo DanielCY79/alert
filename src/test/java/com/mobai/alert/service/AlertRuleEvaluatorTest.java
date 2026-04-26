@@ -23,27 +23,33 @@ class AlertRuleEvaluatorTest {
     void setUp() {
         ReflectionTestUtils.setField(evaluator, "type1AverageVolume5dMax", "300000000");
         ReflectionTestUtils.setField(evaluator, "type1OneMinuteVolumeMin", "80000");
-        ReflectionTestUtils.setField(evaluator, "type1OneMinuteAmplitudeMin", "0.10");
+        ReflectionTestUtils.setField(evaluator, "type1OneMinuteAmplitudeMin", "0.01");
+        ReflectionTestUtils.setField(evaluator, "type1OneMinuteAmplitudeMax", "0.50");
         ReflectionTestUtils.setField(evaluator, "type2AverageVolume7dMax", "500000000");
         ReflectionTestUtils.setField(evaluator, "type2OneMinuteVolumeMin", "200000");
         ReflectionTestUtils.setField(evaluator, "type2PreviousOneMinuteVolumeMin", "40000");
-        ReflectionTestUtils.setField(evaluator, "type2OneMinuteAmplitudeMin", "0.10");
+        ReflectionTestUtils.setField(evaluator, "type2OneMinuteAmplitudeMin", "0.01");
+        ReflectionTestUtils.setField(evaluator, "type2OneMinuteAmplitudeMax", "0.50");
     }
 
     @Test
-    void shouldMatchTypeOneKlineWhenVolumeAndAmplitudeAreAboveThreshold() {
-        BinanceKlineDTO kline = kline("BTCUSDT", "100", "112", "112", "100", "80001", 1L);
+    void shouldMatchTypeOneKlineWhenVolumeAndAmplitudeAreInRange() {
+        BinanceKlineDTO lowerBoundary = kline("BTCUSDT", "100", "101", "101", "100", "80001", 1L);
+        BinanceKlineDTO upperBoundary = kline("BTCUSDT", "100", "150", "150", "100", "80001", 2L);
 
-        assertTrue(evaluator.isTwoOfThreeMomentumKlineMatch(kline));
+        assertTrue(evaluator.isTwoOfThreeMomentumKlineMatch(lowerBoundary));
+        assertTrue(evaluator.isTwoOfThreeMomentumKlineMatch(upperBoundary));
     }
 
     @Test
-    void shouldRejectTypeOneKlineAtVolumeAndAmplitudeBoundary() {
+    void shouldRejectTypeOneKlineWhenVolumeOrAmplitudeIsOutOfRange() {
         BinanceKlineDTO volumeBoundary = kline("BTCUSDT", "100", "112", "112", "100", "80000", 1L);
-        BinanceKlineDTO amplitudeBoundary = kline("BTCUSDT", "100", "110", "110", "100", "80001", 2L);
+        BinanceKlineDTO belowAmplitudeRange = kline("BTCUSDT", "100", "100.99", "100.99", "100", "80001", 2L);
+        BinanceKlineDTO aboveAmplitudeRange = kline("BTCUSDT", "100", "151", "151", "100", "80001", 3L);
 
         assertFalse(evaluator.isTwoOfThreeMomentumKlineMatch(volumeBoundary));
-        assertFalse(evaluator.isTwoOfThreeMomentumKlineMatch(amplitudeBoundary));
+        assertFalse(evaluator.isTwoOfThreeMomentumKlineMatch(belowAmplitudeRange));
+        assertFalse(evaluator.isTwoOfThreeMomentumKlineMatch(aboveAmplitudeRange));
     }
 
     @Test
@@ -195,7 +201,7 @@ class AlertRuleEvaluatorTest {
     }
 
     @Test
-    void shouldRejectType2SignalAtOneMinuteVolumeAndAmplitudeBoundary() {
+    void shouldRejectType2SignalAtOneMinuteVolumeBoundary() {
         BinanceKlineDTO latestOneMinuteKline = kline("BTCUSDT", "100", "110", "110", "100", "200000", 1441L);
         BinanceKlineDTO previousOneMinuteKline = kline("BTCUSDT", "100", "101", "101", "100", "40001", 1440L);
         DailyMa20Snapshot dailyMa20Snapshot = new DailyMa20Snapshot(
@@ -208,6 +214,30 @@ class AlertRuleEvaluatorTest {
         assertFalse(evaluator.shouldEvaluateLowVolumeMa20Signal(
                 dailyMa20Snapshot,
                 latestOneMinuteKline,
+                previousOneMinuteKline
+        ));
+    }
+
+    @Test
+    void shouldRejectType2SignalWhenOneMinuteAmplitudeIsOutOfRange() {
+        BinanceKlineDTO belowAmplitudeRange = kline("BTCUSDT", "100", "100.99", "100.99", "100", "250000", 1441L);
+        BinanceKlineDTO aboveAmplitudeRange = kline("BTCUSDT", "100", "151", "151", "100", "250000", 1442L);
+        BinanceKlineDTO previousOneMinuteKline = kline("BTCUSDT", "100", "101", "101", "100", "40001", 1440L);
+        DailyMa20Snapshot dailyMa20Snapshot = new DailyMa20Snapshot(
+                new BigDecimal("90"),
+                new BigDecimal("299999999"),
+                new BigDecimal("400000000"),
+                System.currentTimeMillis() + 60_000L
+        );
+
+        assertFalse(evaluator.shouldEvaluateLowVolumeMa20Signal(
+                dailyMa20Snapshot,
+                belowAmplitudeRange,
+                previousOneMinuteKline
+        ));
+        assertFalse(evaluator.shouldEvaluateLowVolumeMa20Signal(
+                dailyMa20Snapshot,
+                aboveAmplitudeRange,
                 previousOneMinuteKline
         ));
     }
