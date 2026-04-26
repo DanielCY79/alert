@@ -2,10 +2,8 @@ package com.mobai.alert.api;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
 import com.mobai.alert.dto.BinanceKlineDTO;
 import com.mobai.alert.dto.BinanceSymbolsDTO;
-import com.mobai.alert.dto.BinanceTicker24hrDTO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -23,36 +21,13 @@ import java.util.List;
 @Component
 public class BinanceApi {
 
-    private static final String BASE_URL = "https://api.binance.com/api/v3/ticker/price";
     private static final String KLINE_BASE_URL = "https://fapi.binance.com/fapi/v1/klines";
     private static final String SYMBOLS_BASE_URL = "https://fapi.binance.com/fapi/v1/exchangeInfo";
-    private static final String TICKER_24HR_BASE_URL = "https://fapi.binance.com/fapi/v1/ticker/24hr";
 
     @Autowired
     private RestTemplate restTemplate;
 
     private String apiKey = "6JyypvY7m4zramFJkkWbgy";
-
-    /**
-     * 简单验证行情接口是否可访问。
-     */
-    public void testTime() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-MBX-APIKEY", apiKey);
-
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-        String url = BASE_URL + "?symbol=BTCUSDT";
-
-        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
-
-        try {
-            JSONObject jsonObject = JSON.parseObject(response.getBody());
-            System.out.println("Symbol: " + jsonObject.getString("symbol"));
-            System.out.println("Price: " + jsonObject.getString("price"));
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
 
     /**
      * 查询指定交易对的 K 线数据。
@@ -122,21 +97,4 @@ public class BinanceApi {
         return new BinanceSymbolsDTO();
     }
 
-    /**
-     * 查询 Binance 期货全市场 24 小时统计。
-     */
-    public List<BinanceTicker24hrDTO> list24hrTickerStats() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("X-MBX-APIKEY", apiKey);
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-
-        try {
-            ResponseEntity<String> response = restTemplate.exchange(TICKER_24HR_BASE_URL, HttpMethod.GET, entity, String.class);
-            return JSON.parseArray(response.getBody(), BinanceTicker24hrDTO.class);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return List.of();
-    }
 }

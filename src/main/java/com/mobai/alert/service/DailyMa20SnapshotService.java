@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentMap;
 public class DailyMa20SnapshotService {
 
     private static final int MA20_PERIOD = 20;
-    private static final BigDecimal BOLLINGER_MULTIPLIER = new BigDecimal("2");
+    private static final int AVERAGE_VOLUME_PERIOD = 7;
     private static final long ONE_DAY_MILLIS = 24 * 60 * 60 * 1000L;
 
     private final BinanceMarketDataService binanceMarketDataService;
@@ -87,22 +87,26 @@ public class DailyMa20SnapshotService {
             total = total.add(new BigDecimal(kline.getClose()));
         }
         BigDecimal ma20 = total.divide(BigDecimal.valueOf(MA20_PERIOD), 6, RoundingMode.HALF_UP);
-        BigDecimal variance = BigDecimal.ZERO;
-        for (BinanceKlineDTO kline : dailyKlines) {
-            BigDecimal diff = new BigDecimal(kline.getClose()).subtract(ma20);
-            variance = variance.add(diff.multiply(diff));
-        }
-        BigDecimal stdDev = BigDecimal.valueOf(
-                Math.sqrt(variance.divide(BigDecimal.valueOf(MA20_PERIOD), 12, RoundingMode.HALF_UP).doubleValue())
-        );
-        BigDecimal bollingerOffset = stdDev.multiply(BOLLINGER_MULTIPLIER);
-        BigDecimal bollingerUpper = ma20.add(bollingerOffset);
-        BigDecimal bollingerLower = ma20.subtract(bollingerOffset);
         BinanceKlineDTO latestDailyKline = dailyKlines.get(dailyKlines.size() - 1);
         long refreshAfterMillis = latestDailyKline.getEndTime() == null
                 ? 0L
                 : latestDailyKline.getEndTime() + ONE_DAY_MILLIS + 1L;
 
-        return new DailyMa20Snapshot(latestDailyKline, ma20, bollingerUpper, bollingerLower, refreshAfterMillis);
+        BigDecimal averageVolume7d = calculateAverageVolume(dailyKlines, AVERAGE_VOLUME_PERIOD);
+
+        return new DailyMa20Snapshot(ma20, averageVolume7d, refreshAfterMillis);
+    }
+
+    private BigDecimal calculateAverageVolume(List<BinanceKlineDTO> klines, int period) {
+        if (CollectionUtils.isEmpty(klines) || klines.size() < period) {
+            return null;
+        }
+
+        BigDecimal total = BigDecimal.ZERO;
+        List<BinanceKlineDTO> recentKlines = klines.subList(klines.size() - period, klines.size());
+        for (BinanceKlineDTO kline : recentKlines) {
+            total = total.add(new BigDecimal(kline.getVolume()));
+        }
+        return total.divide(BigDecimal.valueOf(period), 6, RoundingMode.HALF_UP);
     }
 }

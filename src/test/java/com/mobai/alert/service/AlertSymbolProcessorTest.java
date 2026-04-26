@@ -14,15 +14,14 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AlertSymbolProcessorTest {
 
     private BinanceMarketDataService binanceMarketDataService;
-    private BinanceTickerStatsService binanceTickerStatsService;
     private DailyMa20SnapshotService dailyMa20SnapshotService;
     private AlertRuleEvaluator alertRuleEvaluator;
     private AlertNotificationService alertNotificationService;
@@ -31,13 +30,11 @@ class AlertSymbolProcessorTest {
     @BeforeEach
     void setUp() {
         binanceMarketDataService = mock(BinanceMarketDataService.class);
-        binanceTickerStatsService = mock(BinanceTickerStatsService.class);
         dailyMa20SnapshotService = mock(DailyMa20SnapshotService.class);
         alertRuleEvaluator = mock(AlertRuleEvaluator.class);
         alertNotificationService = mock(AlertNotificationService.class);
         processor = new AlertSymbolProcessor(
                 binanceMarketDataService,
-                binanceTickerStatsService,
                 dailyMa20SnapshotService,
                 alertRuleEvaluator,
                 alertNotificationService
@@ -46,30 +43,7 @@ class AlertSymbolProcessorTest {
     }
 
     @Test
-    void shouldRequireThreeClosedKlinesForContinuousThreeSignal() {
-        BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
-        List<BinanceKlineDTO> closedKlines = List.of(
-                kline("BTCUSDT", 1L),
-                kline("BTCUSDT", 2L),
-                kline("BTCUSDT", 3L),
-                kline("BTCUSDT", 4L)
-        );
-
-        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1m", 5)).thenReturn(closedKlines);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(1))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(2))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(3))).thenReturn(false);
-        when(alertRuleEvaluator.isContinuousTwoMatch(any())).thenReturn(false);
-
-        processor.process(symbol);
-
-        ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
-        verify(alertNotificationService).send(signalCaptor.capture());
-        assertEquals("4", signalCaptor.getValue().getType());
-    }
-
-    @Test
-    void shouldUseLatestClosedKlineForWinningContinuousThreeSignal() {
+    void shouldSendContinuousThreeSignalAsTypeOne() {
         BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
         List<BinanceKlineDTO> closedKlines = List.of(
                 kline("BTCUSDT", 1L),
@@ -83,9 +57,6 @@ class AlertSymbolProcessorTest {
         when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(2))).thenReturn(true);
         when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(3))).thenReturn(true);
         when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(4))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(3))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(4))).thenReturn(true);
-        when(alertRuleEvaluator.isBacktrackMatch(closedKlines.get(4))).thenReturn(false);
 
         processor.process(symbol);
 
@@ -96,7 +67,7 @@ class AlertSymbolProcessorTest {
     }
 
     @Test
-    void shouldPreferTwoOfThreeOverContinuousTwoWhenBothMatch() {
+    void shouldSendLowVolumeMa20SignalAsTypeTwo() {
         BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
         List<BinanceKlineDTO> closedKlines = List.of(
                 kline("BTCUSDT", 1L),
@@ -105,91 +76,70 @@ class AlertSymbolProcessorTest {
                 kline("BTCUSDT", 4L),
                 kline("BTCUSDT", 5L)
         );
+        BinanceKlineDTO latestClosedKline = closedKlines.get(closedKlines.size() - 1);
+        DailyMa20Snapshot dailyMa20Snapshot = new DailyMa20Snapshot(
+                new BigDecimal("93"),
+                new BigDecimal("400000000"),
+                System.currentTimeMillis() + 60_000L
+        );
+        List<BinanceKlineDTO> fifteenMinuteKlines = maKlines("BTCUSDT", 20, "90");
+        List<BinanceKlineDTO> oneHourKlines = maKlines("BTCUSDT", 20, "91");
+        List<BinanceKlineDTO> fourHourKlines = maKlines("BTCUSDT", 20, "92");
+        LowVolumeMa20SignalContext context = new LowVolumeMa20SignalContext(
+                latestClosedKline,
+                new BigDecimal("112"),
+                new BigDecimal("400000000"),
+                new BigDecimal("93"),
+                new BigDecimal("92"),
+                new BigDecimal("91"),
+                new BigDecimal("90"),
+                new BigDecimal("250000"),
+                new BigDecimal("0.12")
+        );
+
+        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1m", 5)).thenReturn(closedKlines);
+        when(dailyMa20SnapshotService.getSnapshot("BTCUSDT")).thenReturn(dailyMa20Snapshot);
+        when(alertRuleEvaluator.shouldEvaluateLowVolumeMa20Signal(dailyMa20Snapshot, latestClosedKline)).thenReturn(true);
+        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "15m", 20)).thenReturn(fifteenMinuteKlines);
+        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1h", 20)).thenReturn(oneHourKlines);
+        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "4h", 20)).thenReturn(fourHourKlines);
+        when(alertRuleEvaluator.evaluateLowVolumeMa20Signal(
+                dailyMa20Snapshot,
+                latestClosedKline,
+                fifteenMinuteKlines,
+                oneHourKlines,
+                fourHourKlines
+        )).thenReturn(context);
+
+        processor.process(symbol);
+
+        ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
+        verify(alertNotificationService).send(signalCaptor.capture());
+        assertEquals("2", signalCaptor.getValue().getType());
+        assertEquals(AlertCooldownCategory.LOW_VOLUME_MA20, signalCaptor.getValue().getCooldownCategory());
+        assertEquals(FeishuCardTemplate.YELLOW, signalCaptor.getValue().getTemplate());
+    }
+
+    @Test
+    void shouldNotSendWhenRetainedRulesDoNotMatch() {
+        BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
+        List<BinanceKlineDTO> closedKlines = List.of(
+                kline("BTCUSDT", 1L),
+                kline("BTCUSDT", 2L),
+                kline("BTCUSDT", 3L),
+                kline("BTCUSDT", 4L),
+                kline("BTCUSDT", 5L)
+        );
+        BinanceKlineDTO latestClosedKline = closedKlines.get(closedKlines.size() - 1);
 
         when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1m", 5)).thenReturn(closedKlines);
         when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(2))).thenReturn(false);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(3))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(4))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(3))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(4))).thenReturn(true);
-        when(alertRuleEvaluator.isBacktrackMatch(closedKlines.get(4))).thenReturn(false);
+        when(dailyMa20SnapshotService.getSnapshot("BTCUSDT")).thenReturn(null);
+        when(alertRuleEvaluator.shouldEvaluateLowVolumeMa20Signal(null, latestClosedKline)).thenReturn(false);
 
         processor.process(symbol);
 
-        ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
-        verify(alertNotificationService).send(signalCaptor.capture());
-        assertEquals("4", signalCaptor.getValue().getType());
-        assertEquals("3根K线中2根满足规则", signalCaptor.getValue().getTitle());
-        assertSame(closedKlines.get(4), signalCaptor.getValue().getKline());
-    }
-
-    @Test
-    void shouldSendContinuousTwoWhenNoStrongerSignalMatches() {
-        BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
-        List<BinanceKlineDTO> closedKlines = List.of(
-                kline("BTCUSDT", 1L),
-                kline("BTCUSDT", 2L),
-                kline("BTCUSDT", 3L),
-                kline("BTCUSDT", 4L),
-                kline("BTCUSDT", 5L)
-        );
-
-        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1m", 5)).thenReturn(closedKlines);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(2))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(3))).thenReturn(false);
-        when(alertRuleEvaluator.isContinuousThreeMatch(closedKlines.get(4))).thenReturn(false);
-        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(3))).thenReturn(true);
-        when(alertRuleEvaluator.isContinuousTwoMatch(closedKlines.get(4))).thenReturn(true);
-        when(alertRuleEvaluator.isBacktrackMatch(closedKlines.get(4))).thenReturn(false);
-
-        processor.process(symbol);
-
-        ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
-        verify(alertNotificationService).send(signalCaptor.capture());
-        assertEquals("3", signalCaptor.getValue().getType());
-        assertSame(closedKlines.get(4), signalCaptor.getValue().getKline());
-    }
-
-    @Test
-    void shouldSendMa20VolumeSpikeSignalWithPurpleCardTemplate() {
-        BinanceSymbolsDetailDTO symbol = tradingSymbol("BTCUSDT");
-        List<BinanceKlineDTO> oneMinuteKlines = oneMinuteKlines("BTCUSDT", 5, "100000");
-        oneMinuteKlines.get(oneMinuteKlines.size() - 1).setVolume("320000");
-        List<BinanceKlineDTO> dailyKlines = dailyKlines("BTCUSDT", 20);
-        BinanceKlineDTO latestOneMinuteKline = oneMinuteKlines.get(oneMinuteKlines.size() - 1);
-        BinanceKlineDTO latestDailyKline = dailyKlines.get(dailyKlines.size() - 1);
-        DailyMa20Snapshot dailyMa20Snapshot = new DailyMa20Snapshot(
-                latestDailyKline,
-                new BigDecimal("100.1234"),
-                new BigDecimal("120"),
-                new BigDecimal("90"),
-                System.currentTimeMillis() + 60_000L
-        );
-        Ma20VolumeSpikeContext context = new Ma20VolumeSpikeContext(
-                latestDailyKline,
-                latestOneMinuteKline,
-                new BigDecimal("100.1234"),
-                new BigDecimal("100000.0000"),
-                new BigDecimal("320000.0000"),
-                new BigDecimal("3.2000")
-        );
-
-        when(binanceMarketDataService.loadRecentClosedKlines("BTCUSDT", "1m", 5)).thenReturn(oneMinuteKlines);
-        when(binanceTickerStatsService.getAverageOneMinuteVolume("BTCUSDT")).thenReturn(new BigDecimal("100000"));
-        when(dailyMa20SnapshotService.getSnapshot("BTCUSDT")).thenReturn(dailyMa20Snapshot);
-        when(alertRuleEvaluator.isContinuousThreeMatch(any())).thenReturn(false);
-        when(alertRuleEvaluator.isContinuousTwoMatch(any())).thenReturn(false);
-        when(alertRuleEvaluator.evaluateMa20VolumeSpike(dailyMa20Snapshot, latestOneMinuteKline, new BigDecimal("100000")))
-                .thenReturn(context);
-
-        processor.process(symbol);
-
-        ArgumentCaptor<AlertSignal> signalCaptor = ArgumentCaptor.forClass(AlertSignal.class);
-        verify(alertNotificationService).send(signalCaptor.capture());
-        assertEquals("5", signalCaptor.getValue().getType());
-        assertEquals(AlertCooldownCategory.DAILY_MA20_VOLUME_SPIKE, signalCaptor.getValue().getCooldownCategory());
-        assertEquals(FeishuCardTemplate.PURPLE, signalCaptor.getValue().getTemplate());
-        assertEquals("日K站上MA20且1m成交额放大", signalCaptor.getValue().getTitle());
+        verifyNoInteractions(alertNotificationService);
     }
 
     private BinanceSymbolsDetailDTO tradingSymbol(String symbol) {
@@ -202,42 +152,26 @@ class AlertSymbolProcessorTest {
     private BinanceKlineDTO kline(String symbol, long endTime) {
         BinanceKlineDTO dto = new BinanceKlineDTO();
         dto.setSymbol(symbol);
-        dto.setOpen("1");
-        dto.setClose("2");
-        dto.setHigh("2");
-        dto.setLow("1");
-        dto.setVolume("1000000");
+        dto.setOpen("100");
+        dto.setClose("112");
+        dto.setHigh("112");
+        dto.setLow("100");
+        dto.setVolume("250000");
         dto.setEndTime(endTime);
         return dto;
     }
 
-    private List<BinanceKlineDTO> oneMinuteKlines(String symbol, int size, String volume) {
+    private List<BinanceKlineDTO> maKlines(String symbol, int size, String close) {
         List<BinanceKlineDTO> klines = new ArrayList<>();
         for (int i = 1; i <= size; i++) {
             BinanceKlineDTO dto = new BinanceKlineDTO();
             dto.setSymbol(symbol);
-            dto.setOpen("100");
-            dto.setClose("101");
-            dto.setHigh("101");
-            dto.setLow("99");
-            dto.setVolume(volume);
-            dto.setEndTime((long) i);
-            klines.add(dto);
-        }
-        return klines;
-    }
-
-    private List<BinanceKlineDTO> dailyKlines(String symbol, int size) {
-        List<BinanceKlineDTO> klines = new ArrayList<>();
-        for (int i = 1; i <= size; i++) {
-            BinanceKlineDTO dto = new BinanceKlineDTO();
-            dto.setSymbol(symbol);
-            dto.setOpen("100");
-            dto.setClose(String.valueOf(100 + i));
-            dto.setHigh(String.valueOf(101 + i));
-            dto.setLow(String.valueOf(99 + i));
+            dto.setOpen(close);
+            dto.setClose(close);
+            dto.setHigh(close);
+            dto.setLow(close);
             dto.setVolume("1000000");
-            dto.setEndTime(i * 86_400_000L);
+            dto.setEndTime((long) i);
             klines.add(dto);
         }
         return klines;

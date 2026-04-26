@@ -1,7 +1,7 @@
 package com.mobai.alert.service;
 
-import com.mobai.alert.api.FeishuCardTemplate;
 import com.mobai.alert.api.FeishuBotApi;
+import com.mobai.alert.api.FeishuCardTemplate;
 import com.mobai.alert.dto.BinanceKlineDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -24,7 +24,7 @@ import static org.mockito.Mockito.when;
 class AlertNotificationServiceTest {
 
     @Test
-    void shouldHighlightFirstNotificationOfTheDay() {
+    void shouldHighlightFirstLegacyNotificationOfTheDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
 
@@ -34,14 +34,14 @@ class AlertNotificationServiceTest {
     }
 
     @Test
-    void shouldSuppressDifferentLegacyTypeForSameSymbolWithinSameNaturalDay() {
+    void shouldSuppressSameLegacySymbolWithinSameNaturalDay() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
 
         service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
-        service.send(signal("BTCUSDT", "4"));
+        service.send(signal("BTCUSDT", "1"));
 
         verifyNoInteractions(feishuBotApi);
     }
@@ -54,7 +54,7 @@ class AlertNotificationServiceTest {
         service.send(signal("BTCUSDT", "1"));
         reset(feishuBotApi);
 
-        service.send(signal("ETHUSDT", "4"));
+        service.send(signal("ETHUSDT", "1"));
 
         verify(feishuBotApi).sendGroupMessage(anyString(), anyString(), eq(true));
     }
@@ -64,7 +64,7 @@ class AlertNotificationServiceTest {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
         AlertSignal firstSignal = signal("BTCUSDT", "1");
-        AlertSignal secondSignal = signal("BTCUSDT", "4");
+        AlertSignal secondSignal = signal("BTCUSDT", "1");
         String recordKey = AlertCooldownCategory.LEGACY.getCode() + ":BTCUSDT";
 
         service.send(firstSignal);
@@ -82,7 +82,7 @@ class AlertNotificationServiceTest {
     void shouldLoadTodaySentRecordFromLocalFile() throws IOException {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
-        AlertSignal signal = signal("BTCUSDT", "4");
+        AlertSignal signal = signal("BTCUSDT", "1");
         String recordKey = AlertCooldownCategory.LEGACY.getCode() + ":BTCUSDT";
         Path tempFile = Files.createTempFile("feishu-highlight-records", ".json");
 
@@ -104,7 +104,7 @@ class AlertNotificationServiceTest {
     }
 
     @Test
-    void shouldKeepLegacyAndNewCategoryCooldownIndependent() {
+    void shouldKeepLegacyAndType2CooldownIndependent() {
         FeishuBotApi feishuBotApi = mock(FeishuBotApi.class);
         AlertNotificationService service = newService(feishuBotApi);
 
@@ -112,15 +112,15 @@ class AlertNotificationServiceTest {
         reset(feishuBotApi);
 
         service.send(new AlertSignal(
-                "Daily MA20 Volume Spike",
+                "Low Volume MA20",
                 kline("BTCUSDT"),
-                "5",
-                AlertCooldownCategory.DAILY_MA20_VOLUME_SPIKE,
-                "Volume ratio: 3.00x",
-                FeishuCardTemplate.PURPLE
+                "2",
+                AlertCooldownCategory.LOW_VOLUME_MA20,
+                "1m振幅：12%",
+                FeishuCardTemplate.YELLOW
         ));
 
-        verify(feishuBotApi).sendGroupMessageToNewLogicWebhook(anyString(), contains("Volume ratio"), eq(FeishuCardTemplate.PURPLE));
+        verify(feishuBotApi).sendGroupMessage(anyString(), contains("1m振幅"), eq(FeishuCardTemplate.YELLOW));
     }
 
     @Test

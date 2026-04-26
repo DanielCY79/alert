@@ -69,14 +69,14 @@ class FeishuBotApiTest {
     }
 
     @Test
-    void shouldSetBlueHeaderTemplateForOpportunityMessage() {
+    void shouldUseExplicitYellowTemplate() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         FeishuBotApi api = new FeishuBotApi(restTemplate);
         ReflectionTestUtils.setField(api, "webhookUrl", "http://localhost/test");
         when(restTemplate.postForObject(eq("http://localhost/test"), any(HttpEntity.class), eq(String.class)))
                 .thenReturn("{\"code\":0}");
 
-        api.sendGroupMessage("BitLanglang Opportunity", "Profile: breakout", FeishuCardTemplate.BLUE);
+        api.sendGroupMessage("Type 2 Alert", "1m振幅：12%", FeishuCardTemplate.YELLOW);
 
         ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
         verify(restTemplate).postForObject(eq("http://localhost/test"), requestCaptor.capture(), eq(String.class));
@@ -85,41 +85,7 @@ class FeishuBotApiTest {
         Map<String, Object> card = castMap(payload.get("card"));
         Map<String, Object> header = castMap(card.get("header"));
 
-        assertEquals("blue", header.get("template"));
-    }
-
-    @Test
-    void shouldSetPurpleHeaderTemplateForDailyMa20VolumeSpikeMessage() {
-        RestTemplate restTemplate = mock(RestTemplate.class);
-        FeishuBotApi api = new FeishuBotApi(restTemplate);
-        ReflectionTestUtils.setField(api, "webhookUrl", "http://localhost/test");
-        when(restTemplate.postForObject(eq("http://localhost/test"), any(HttpEntity.class), eq(String.class)))
-                .thenReturn("{\"code\":0}");
-
-        api.sendGroupMessage("Daily MA20 Volume Spike", "Volume ratio: 3.00x", FeishuCardTemplate.PURPLE);
-
-        ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
-        verify(restTemplate).postForObject(eq("http://localhost/test"), requestCaptor.capture(), eq(String.class));
-
-        Map<String, Object> payload = castMap(requestCaptor.getValue().getBody());
-        Map<String, Object> card = castMap(payload.get("card"));
-        Map<String, Object> header = castMap(card.get("header"));
-
-        assertEquals("purple", header.get("template"));
-    }
-
-    @Test
-    void shouldSendNewLogicMessageToDedicatedWebhook() {
-        RestTemplate restTemplate = mock(RestTemplate.class);
-        FeishuBotApi api = new FeishuBotApi(restTemplate);
-        ReflectionTestUtils.setField(api, "webhookUrl", "http://localhost/default");
-        ReflectionTestUtils.setField(api, "newLogicWebhookUrl", "http://localhost/new-logic");
-        when(restTemplate.postForObject(eq("http://localhost/new-logic"), any(HttpEntity.class), eq(String.class)))
-                .thenReturn("{\"code\":0}");
-
-        api.sendGroupMessageToNewLogicWebhook("New Logic Alert", "Volume ratio: 3.00x", FeishuCardTemplate.PURPLE);
-
-        verify(restTemplate).postForObject(eq("http://localhost/new-logic"), any(HttpEntity.class), eq(String.class));
+        assertEquals("yellow", header.get("template"));
     }
 
     @SuppressWarnings("unchecked")

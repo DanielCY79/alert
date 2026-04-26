@@ -3,23 +3,21 @@ package com.mobai.alert.service;
 import com.mobai.alert.dto.BinanceKlineDTO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 
 /**
- * 告警规则计算器，负责判断连续上涨、回踩等条件是否命中。
+ * 告警规则计算器，负责判断保留的 type=1 和 type=2 条件是否命中。
  */
 @Service
 public class AlertRuleEvaluator {
 
-    private static final BigDecimal DAILY_BOLLINGER_WIDTH_MAX_RATIO = new BigDecimal("0.5");
-    private static final BigDecimal VOLUME_SPIKE_RATIO = new BigDecimal("3");
+    private static final int MA20_PERIOD = 20;
 
     @Value("${monitoring.rate.low}")
     private String rateLow;
-
-    @Value("${monitoring.rate.back.low}")
-    private String rateBackLow;
 
     @Value("${monitoring.rate.high}")
     private String rateHigh;
@@ -27,17 +25,17 @@ public class AlertRuleEvaluator {
     @Value("${monitoring.alert.volume.low}")
     private String volumeLow;
 
-    @Value("${monitoring.alert.volume.back.low}")
-    private String volumeBackLow;
-
     @Value("${monitoring.alert.volume.high}")
     private String volumeHigh;
 
-    @Value("${monitoring.rate.two.low}")
-    private String twoRateLow;
+    @Value("${monitoring.type2.average-volume-7d.max:500000000}")
+    private String type2AverageVolume7dMax = "500000000";
 
-    @Value("${monitoring.volume.two.low}")
-    private String twoVolumeLow;
+    @Value("${monitoring.type2.one-minute-volume.min:200000}")
+    private String type2OneMinuteVolumeMin = "200000";
+
+    @Value("${monitoring.type2.one-minute-amplitude.min:0.10}")
+    private String type2OneMinuteAmplitudeMin = "0.10";
 
     /**
      * 判断单根 K 线是否满足“三连涨”使用的基础条件。
@@ -59,100 +57,51 @@ public class AlertRuleEvaluator {
     }
 
     /**
-     * 判断单根 K 线是否满足“两连涨”条件。
-     * 该规则仅校验最小振幅和最小成交额。
+     * Type 2 rule precheck before loading extra 15m/1h/4h K lines.
      */
-    public boolean isContinuousTwoMatch(BinanceKlineDTO kline) {
-        if (!isRising(kline)) {
-            return false;
-        }
-
-        BigDecimal rate = calculateAmplitude(kline);
-        if (rate.compareTo(new BigDecimal(twoRateLow)) < 0) {
-            return false;
-        }
-
-        return new BigDecimal(kline.getVolume()).compareTo(new BigDecimal(twoVolumeLow)) >= 0;
+    public boolean shouldEvaluateLowVolumeMa20Signal(DailyMa20Snapshot dailyMa20Snapshot,
+                                                     BinanceKlineDTO latestOneMinuteKline) {
+        return matchesLowVolumeMa20BaseConditions(dailyMa20Snapshot, latestOneMinuteKline);
     }
 
     /**
-     * 判断当前 K 线是否满足回踩条件。
-     * 要求为阴线，跌幅达到阈值，且成交额不低于配置下限。
+     * Type 2 independent rule:
+     * 7d average quote volume < 500M USDT, price above 1d/4h/1h/15m MA20,
+     * 1m quote volume > 200K USDT, and 1m amplitude > 10%.
      */
-    public boolean isBacktrackMatch(BinanceKlineDTO kline) {
-        BigDecimal open = new BigDecimal(kline.getOpen());
-        BigDecimal close = new BigDecimal(kline.getClose());
-        if (close.compareTo(open) >= 0) {
-            return false;
-        }
-
-        BigDecimal rate = open.subtract(close).abs().divide(close, 6, RoundingMode.HALF_UP);
-        if (rate.compareTo(new BigDecimal(rateBackLow)) < 0) {
-            return false;
-        }
-
-        return new BigDecimal(kline.getVolume()).compareTo(new BigDecimal(volumeBackLow)) >= 0;
-    }
-
-    /**
-     * 评估“日 K 站上 MA20 且 1 分钟成交额放量”条件。
-     */
-    public Ma20VolumeSpikeContext evaluateMa20VolumeSpike(DailyMa20Snapshot dailyMa20Snapshot,
-                                                          BinanceKlineDTO latestOneMinuteKline,
-                                                          BigDecimal averageOneMinuteVolume) {
-        if (dailyMa20Snapshot == null
-                || dailyMa20Snapshot.getLatestDailyKline() == null
-                || dailyMa20Snapshot.getMa20() == null
-                || dailyMa20Snapshot.getBollingerUpper() == null
-                || dailyMa20Snapshot.getBollingerLower() == null
-                || latestOneMinuteKline == null
-                || averageOneMinuteVolume == null
-                || averageOneMinuteVolume.signum() <= 0) {
+    public LowVolumeMa20SignalContext evaluateLowVolumeMa20Signal(DailyMa20Snapshot dailyMa20Snapshot,
+                                                                  BinanceKlineDTO latestOneMinuteKline,
+                                                                  List<BinanceKlineDTO> fifteenMinuteKlines,
+                                                                  List<BinanceKlineDTO> oneHourKlines,
+                                                                  List<BinanceKlineDTO> fourHourKlines) {
+        if (!matchesLowVolumeMa20BaseConditions(dailyMa20Snapshot, latestOneMinuteKline)) {
             return null;
         }
 
-        BinanceKlineDTO latestDailyKline = dailyMa20Snapshot.getLatestDailyKline();
-        BigDecimal ma20 = dailyMa20Snapshot.getMa20();
-        BigDecimal dailyClose = new BigDecimal(latestDailyKline.getClose());
-        if (dailyClose.compareTo(ma20) <= 0) {
+        BigDecimal currentPrice = closePrice(latestOneMinuteKline);
+        BigDecimal fifteenMinuteMa20 = calculateCloseMa(fifteenMinuteKlines, MA20_PERIOD);
+        BigDecimal oneHourMa20 = calculateCloseMa(oneHourKlines, MA20_PERIOD);
+        BigDecimal fourHourMa20 = calculateCloseMa(fourHourKlines, MA20_PERIOD);
+        if (fifteenMinuteMa20 == null || oneHourMa20 == null || fourHourMa20 == null) {
             return null;
         }
 
-        BigDecimal oneMinuteOpen = new BigDecimal(latestOneMinuteKline.getOpen());
-        BigDecimal oneMinuteClose = new BigDecimal(latestOneMinuteKline.getClose());
-        if (oneMinuteClose.compareTo(oneMinuteOpen) < 0) {
+        if (currentPrice.compareTo(fifteenMinuteMa20) <= 0
+                || currentPrice.compareTo(oneHourMa20) <= 0
+                || currentPrice.compareTo(fourHourMa20) <= 0) {
             return null;
         }
 
-        BigDecimal bollingerLower = dailyMa20Snapshot.getBollingerLower();
-        if (bollingerLower.signum() <= 0) {
-            return null;
-        }
-
-        BigDecimal bollingerWidthRatio = dailyMa20Snapshot.getBollingerUpper()
-                .subtract(bollingerLower)
-                .divide(bollingerLower, 6, RoundingMode.HALF_UP);
-        if (bollingerWidthRatio.compareTo(DAILY_BOLLINGER_WIDTH_MAX_RATIO) >= 0) {
-            return null;
-        }
-
-        BigDecimal currentOneMinuteVolume = new BigDecimal(latestOneMinuteKline.getVolume());
-        if (currentOneMinuteVolume.compareTo(new BigDecimal(twoVolumeLow)) < 0) {
-            return null;
-        }
-
-        BigDecimal volumeRatio = currentOneMinuteVolume.divide(averageOneMinuteVolume, 6, RoundingMode.HALF_UP);
-        if (volumeRatio.compareTo(VOLUME_SPIKE_RATIO) < 0) {
-            return null;
-        }
-
-        return new Ma20VolumeSpikeContext(
-                latestDailyKline,
+        return new LowVolumeMa20SignalContext(
                 latestOneMinuteKline,
-                ma20,
-                averageOneMinuteVolume,
-                currentOneMinuteVolume,
-                volumeRatio
+                currentPrice,
+                dailyMa20Snapshot.getAverageVolume7d(),
+                dailyMa20Snapshot.getMa20(),
+                fourHourMa20,
+                oneHourMa20,
+                fifteenMinuteMa20,
+                new BigDecimal(latestOneMinuteKline.getVolume()),
+                calculateAmplitude(latestOneMinuteKline)
         );
     }
 
@@ -163,6 +112,47 @@ public class AlertRuleEvaluator {
         BigDecimal open = new BigDecimal(kline.getOpen());
         BigDecimal close = new BigDecimal(kline.getClose());
         return close.compareTo(open) > 0;
+    }
+
+    private boolean matchesLowVolumeMa20BaseConditions(DailyMa20Snapshot dailyMa20Snapshot,
+                                                       BinanceKlineDTO latestOneMinuteKline) {
+        if (dailyMa20Snapshot == null
+                || latestOneMinuteKline == null
+                || dailyMa20Snapshot.getMa20() == null
+                || dailyMa20Snapshot.getAverageVolume7d() == null) {
+            return false;
+        }
+
+        if (dailyMa20Snapshot.getAverageVolume7d().compareTo(new BigDecimal(type2AverageVolume7dMax)) >= 0) {
+            return false;
+        }
+
+        if (closePrice(latestOneMinuteKline).compareTo(dailyMa20Snapshot.getMa20()) <= 0) {
+            return false;
+        }
+
+        if (new BigDecimal(latestOneMinuteKline.getVolume()).compareTo(new BigDecimal(type2OneMinuteVolumeMin)) <= 0) {
+            return false;
+        }
+
+        return calculateAmplitude(latestOneMinuteKline).compareTo(new BigDecimal(type2OneMinuteAmplitudeMin)) > 0;
+    }
+
+    private BigDecimal calculateCloseMa(List<BinanceKlineDTO> klines, int period) {
+        if (klines == null || klines.size() < period) {
+            return null;
+        }
+
+        BigDecimal total = BigDecimal.ZERO;
+        List<BinanceKlineDTO> recentKlines = klines.subList(klines.size() - period, klines.size());
+        for (BinanceKlineDTO kline : recentKlines) {
+            total = total.add(closePrice(kline));
+        }
+        return total.divide(BigDecimal.valueOf(period), 6, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal closePrice(BinanceKlineDTO kline) {
+        return new BigDecimal(kline.getClose());
     }
 
     /**

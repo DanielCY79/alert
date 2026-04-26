@@ -30,8 +30,8 @@ class DailyMa20SnapshotServiceTest {
 
         service.refreshSnapshot(List.of(symbol));
         assertNotNull(service.getSnapshot("BTCUSDT"));
-        assertNotNull(service.getSnapshot("BTCUSDT").getBollingerUpper());
-        assertNotNull(service.getSnapshot("BTCUSDT").getBollingerLower());
+        assertNotNull(service.getSnapshot("BTCUSDT").getMa20());
+        assertNotNull(service.getSnapshot("BTCUSDT").getAverageVolume7d());
 
         service.refreshSnapshot(List.of(symbol));
         verify(binanceMarketDataService, times(1)).loadRecentClosedKlines("BTCUSDT", "1d", 20);
@@ -44,10 +44,8 @@ class DailyMa20SnapshotServiceTest {
     private void forceExpiry(DailyMa20SnapshotService service, String symbol) {
         DailyMa20Snapshot snapshot = service.getSnapshot(symbol);
         DailyMa20Snapshot expiredSnapshot = new DailyMa20Snapshot(
-                snapshot.getLatestDailyKline(),
                 snapshot.getMa20(),
-                snapshot.getBollingerUpper(),
-                snapshot.getBollingerLower(),
+                snapshot.getAverageVolume7d(),
                 System.currentTimeMillis() - 1L
         );
         replaceSnapshot(service, symbol, expiredSnapshot);

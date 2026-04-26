@@ -1,46 +1,30 @@
 package com.mobai.alert.service;
 
-import com.mobai.alert.dto.BinanceKlineDTO;
-
 import java.math.BigDecimal;
 
 /**
- * 单个交易对的日 K MA20 快照。
+ * 单个交易对的日 K MA20 和 7 日平均成交额快照。
  */
 public class DailyMa20Snapshot {
 
-    private final BinanceKlineDTO latestDailyKline;
     private final BigDecimal ma20;
-    private final BigDecimal bollingerUpper;
-    private final BigDecimal bollingerLower;
+    private final BigDecimal averageVolume7d;
     private final long refreshAfterMillis;
 
-    public DailyMa20Snapshot(BinanceKlineDTO latestDailyKline,
-                             BigDecimal ma20,
-                             BigDecimal bollingerUpper,
-                             BigDecimal bollingerLower,
+    public DailyMa20Snapshot(BigDecimal ma20,
+                             BigDecimal averageVolume7d,
                              long refreshAfterMillis) {
-        this.latestDailyKline = latestDailyKline;
         this.ma20 = ma20;
-        this.bollingerUpper = bollingerUpper;
-        this.bollingerLower = bollingerLower;
+        this.averageVolume7d = averageVolume7d;
         this.refreshAfterMillis = refreshAfterMillis;
-    }
-
-    public BinanceKlineDTO getLatestDailyKline() {
-        return latestDailyKline;
     }
 
     public BigDecimal getMa20() {
         return ma20;
     }
 
-    public BigDecimal getBollingerUpper() {
-        return bollingerUpper;
-    }
-
-    public BigDecimal getBollingerLower() {
-        return bollingerLower;
+    public BigDecimal getAverageVolume7d() {
+        return averageVolume7d;
     }
 
     public long getRefreshAfterMillis() {

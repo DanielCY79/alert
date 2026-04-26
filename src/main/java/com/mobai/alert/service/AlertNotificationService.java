@@ -63,13 +63,8 @@ public class AlertNotificationService {
             return;
         }
 
-        FeishuCardTemplate template = signal.getTemplate();
-        if (shouldUseNewLogicWebhook(signal)) {
-            feishuBotApi.sendGroupMessageToNewLogicWebhook(buildTitle(signal), buildBody(signal), resolveTemplate(template));
-            return;
-        }
-
-        if (template != null) {
+        if (signal.getTemplate() != null) {
+            FeishuCardTemplate template = signal.getTemplate();
             feishuBotApi.sendGroupMessage(buildTitle(signal), buildBody(signal), template);
             return;
         }
@@ -157,14 +152,6 @@ public class AlertNotificationService {
     /**
      * 持久化当天发送记录，保证重启后行为一致。
      */
-    private boolean shouldUseNewLogicWebhook(AlertSignal signal) {
-        return signal.getCooldownCategory() == AlertCooldownCategory.DAILY_MA20_VOLUME_SPIKE;
-    }
-
-    private FeishuCardTemplate resolveTemplate(FeishuCardTemplate template) {
-        return template == null ? FeishuCardTemplate.YELLOW : template;
-    }
-
     private synchronized void persistSentRecords() {
         try {
             Files.writeString(

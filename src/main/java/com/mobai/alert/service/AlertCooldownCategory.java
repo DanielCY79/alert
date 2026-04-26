@@ -6,7 +6,7 @@ package com.mobai.alert.service;
 public enum AlertCooldownCategory {
 
     LEGACY("legacy"),
-    DAILY_MA20_VOLUME_SPIKE("daily_ma20_volume_spike");
+    LOW_VOLUME_MA20("low_volume_ma20");
 
     private final String code;
 

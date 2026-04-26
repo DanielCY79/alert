@@ -6,10 +6,7 @@ package com.mobai.alert.api;
 public enum FeishuCardTemplate {
 
     GREY("grey"),
-    YELLOW("yellow"),
-    GREEN("green"),
-    BLUE("blue"),
-    PURPLE("purple");
+    YELLOW("yellow");
 
     private final String templateCode;
 

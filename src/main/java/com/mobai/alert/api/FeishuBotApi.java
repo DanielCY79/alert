@@ -5,7 +5,6 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
@@ -23,9 +22,6 @@ public class FeishuBotApi {
 
     @Value("${notification.feishu.webhook-url}")
     private String webhookUrl;
-
-    @Value("${notification.feishu.new-logic-webhook-url:}")
-    private String newLogicWebhookUrl;
 
     public FeishuBotApi(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
@@ -53,10 +49,6 @@ public class FeishuBotApi {
         sendGroupMessage(webhookUrl, title, body, template);
     }
 
-    public void sendGroupMessageToNewLogicWebhook(String title, String body, FeishuCardTemplate template) {
-        sendGroupMessage(resolveNewLogicWebhookUrl(), title, body, template);
-    }
-
     private void sendGroupMessage(String targetWebhookUrl, String title, String body, FeishuCardTemplate template) {
         Map<String, Object> message = new HashMap<>();
         message.put("msg_type", "interactive");
@@ -68,10 +60,6 @@ public class FeishuBotApi {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(message, headers);
         String response = restTemplate.postForObject(targetWebhookUrl, request, String.class);
         System.out.println("Response from Feishu Bot: " + response);
-    }
-
-    private String resolveNewLogicWebhookUrl() {
-        return StringUtils.hasText(newLogicWebhookUrl) ? newLogicWebhookUrl : webhookUrl;
     }
 
     /**

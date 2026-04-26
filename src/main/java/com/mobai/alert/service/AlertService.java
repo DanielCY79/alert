@@ -25,18 +25,15 @@ public class AlertService {
 
     private final AlertSymbolCacheService alertSymbolCacheService;
     private final BinanceMarketDataService binanceMarketDataService;
-    private final BinanceTickerStatsService binanceTickerStatsService;
     private final DailyMa20SnapshotService dailyMa20SnapshotService;
     private final AlertSymbolProcessor alertSymbolProcessor;
 
     public AlertService(AlertSymbolCacheService alertSymbolCacheService,
                         BinanceMarketDataService binanceMarketDataService,
-                        BinanceTickerStatsService binanceTickerStatsService,
                         DailyMa20SnapshotService dailyMa20SnapshotService,
                         AlertSymbolProcessor alertSymbolProcessor) {
         this.alertSymbolCacheService = alertSymbolCacheService;
         this.binanceMarketDataService = binanceMarketDataService;
-        this.binanceTickerStatsService = binanceTickerStatsService;
         this.dailyMa20SnapshotService = dailyMa20SnapshotService;
         this.alertSymbolProcessor = alertSymbolProcessor;
     }
@@ -60,7 +57,6 @@ public class AlertService {
         }
 
         binanceMarketDataService.refreshSubscriptions(symbolsDTO.getSymbols());
-        binanceTickerStatsService.refreshSnapshot();
         dailyMa20SnapshotService.refreshSnapshot(symbolsDTO.getSymbols());
         processSymbols(symbolsDTO.getSymbols(), 4);
         System.out.println("Monitoring finished " + LOG_TIME_FORMATTER.format(AppTime.now()));
